@@ -72,6 +72,10 @@ my $bind_ip = undef;
 
 my @udp_forwards = ();
 
+my @tcp_forwards = ();
+
+my $tcp_tun = 0;
+
 my $use_remote_ip = 'proxy';
 
 my $family = 'prefer-inet';
@@ -121,6 +125,14 @@ qq{Usage: $0 [options] [--] [user@]host [command...]
                              forward UDP datagrams sent to local PORT
                                 to HOST:HOSTPORT as seen from the server
                                 (may be repeated; needs support on the server)
+
+        --tcp-forward=[BIND_ADDRESS:]PORT:HOST:HOSTPORT
+                             forward TCP connections made to local PORT
+                                to HOST:HOSTPORT as seen from the server
+                                (may be repeated; needs support on the server)
+        --tcp-tun            use a TUN device for TCP forwarding where
+                                possible (needs CAP_NET_ADMIN; connect to
+                                10.111.0.2:PORT instead)
 
         --ssh=COMMAND        ssh command to run when setting up session
                                 (example: "ssh -p 2222")
@@ -180,6 +192,8 @@ GetOptions( 'client=s' => \$client,
 	    'fake-proxy!' => \my $fake_proxy,
 	    'bind-server=s' => \$bind_ip,
 	    'udp-forward|L=s' => \@udp_forwards,
+	    'tcp-forward=s' => \@tcp_forwards,
+	    'tcp-tun!' => \$tcp_tun,
 	    'experimental-remote-ip=s' => \$use_remote_ip) or die $usage;
 
 if ( defined $help ) {
@@ -401,6 +415,14 @@ if ( $pid == 0 ) { # child
     push @server, ( '-L', $_ );
   }
 
+  for ( @tcp_forwards ) {
+    push @server, ( '-T', $_ );
+  }
+
+  if ( $tcp_tun ) {
+    push @server, '-t';
+  }
+
   if ( scalar @command > 0 ) {
     push @server, '--', @command;
   }
@@ -475,7 +497,8 @@ if ( $pid == 0 ) { # child
   $ENV{ 'MOSH_KEY' } = $key;
   $ENV{ 'MOSH_PREDICTION_DISPLAY' } = $predict;
   $ENV{ 'MOSH_NO_TERM_INIT' } = '1' if !$term_init;
-  exec {$client} ("$client", "-# @cmdline |", ( map { ( '-L', $_ ) } @udp_forwards ), $ip, $port);
+  exec {$client} ("$client", "-# @cmdline |", ( map { ( '-L', $_ ) } @udp_forwards ),
+		    ( map { ( '-T', $_ ) } @tcp_forwards ), ( $tcp_tun ? ( '-t' ) : () ), $ip, $port);
 }
 
 sub shell_quote { join ' ', map {(my $a = $_) =~ s/'/'\\''/g; "'$a'"} @_ }

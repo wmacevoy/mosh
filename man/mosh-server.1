@@ -26,6 +26,8 @@ new
 [\-p \fIPORT\fP[:\fIPORT2\fP]]
 [\-c \fICOLORS\fP]
 [\-L \fR[\fP\fIBIND\fP:\fR]\fP\fIPORT\fP:\fIHOST\fP:\fIHOSTPORT\fP]
+[\-T \fR[\fP\fIBIND\fP:\fR]\fP\fIPORT\fP:\fIHOST\fP:\fIHOSTPORT\fP]
+[\-t]
 [\-\- command...]
 .br
 .SH DESCRIPTION
@@ -90,6 +92,21 @@ Experimental.  Relay UDP datagrams that the client forwards (see
 to \fIHOST\fP:\fIHOSTPORT\fP.  The client must be given the same
 specifications in the same order; the server ignores the
 \fIBIND\fP and \fIPORT\fP parts.
+
+.TP
+.B \-T \fR[\fP\fIBIND_ADDRESS\fP:\fR]\fP\fIPORT\fP:\fIHOST\fP:\fIHOSTPORT\fP
+Experimental.  Connect TCP connections that the client forwards (see
+\fB\-\-tcp\-forward\fP in
+.BR mosh (1))
+to \fIHOST\fP:\fIHOSTPORT\fP.  The client must be given the same
+specifications in the same order.
+
+.TP
+.B \-t
+Experimental.  Use a TUN device for \fB\-T\fP where possible (see
+\fB\-\-tcp\-tun\fP in
+.BR mosh (1)).
+With \fB\-v\fP, the server reports how each forward is provided.
 
 .SH ENVIRONMENT VARIABLES
 These variables allow server-side configuration of Mosh's behavior.

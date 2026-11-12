@@ -105,11 +105,25 @@ public:
   /* magic, type, forward index, flow id (2), sequence number (8) */
   static constexpr size_t HEADER_LEN = 13;
   static constexpr uint8_t TYPE_UDP_DATA = 0;
+  static constexpr uint8_t TYPE_TCP_SEGMENT = 1; /* see tcpforward.h */
 
   static constexpr size_t MAX_FORWARDS = 16;
   static constexpr size_t MAX_FLOWS = 64;
   static constexpr uint64_t FLOW_IDLE_TIMEOUT = 120000; /* ms */
   static constexpr int MAX_READS_PER_WAKEUP = 16;
+
+  /* The same framing serves every kind of forwarded payload. */
+  static std::string encode_frame( uint8_t type,
+                                   uint8_t forward,
+                                   uint16_t flow_id,
+                                   uint64_t seq,
+                                   const std::string& data );
+  static bool decode_frame( const std::string& payload,
+                            uint8_t& type,
+                            uint8_t& forward,
+                            uint16_t& flow_id,
+                            uint64_t& seq,
+                            std::string& data );
 
   static std::string encode( uint8_t forward, uint16_t flow_id, uint64_t seq, const std::string& datagram );
   static bool decode( const std::string& payload,

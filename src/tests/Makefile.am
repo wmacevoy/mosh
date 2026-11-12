@@ -39,8 +39,8 @@ displaytests = \
 	unicode-later-combining.test \
 	window-resize.test
 
-check_PROGRAMS = ocb-aes encrypt-decrypt base64 nonce-incr udp-forward tcp-in-udp inpty is-utf8-locale
-TESTS = ocb-aes encrypt-decrypt base64 nonce-incr udp-forward tcp-in-udp local.test $(displaytests)
+check_PROGRAMS = ocb-aes encrypt-decrypt base64 nonce-incr udp-forward tcp-in-udp tcp-forward inpty is-utf8-locale
+TESTS = ocb-aes encrypt-decrypt base64 nonce-incr udp-forward tcp-in-udp tcp-forward local.test $(displaytests)
 XFAIL_TESTS = \
 	e2e-failure.test \
 	emulation-attributes-256color8.test
@@ -72,6 +72,10 @@ udp_forward_LDADD = $(nonce_incr_LDADD)
 tcp_in_udp_SOURCES = tcp-in-udp.cc
 tcp_in_udp_CPPFLAGS = $(nonce_incr_CPPFLAGS)
 tcp_in_udp_LDADD = $(nonce_incr_LDADD)
+
+tcp_forward_SOURCES = tcp-forward.cc
+tcp_forward_CPPFLAGS = $(nonce_incr_CPPFLAGS)
+tcp_forward_LDADD = $(nonce_incr_LDADD)
 
 inpty_SOURCES = inpty.cc
 inpty_CPPFLAGS = -I$(srcdir)/../util

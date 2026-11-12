@@ -85,7 +85,7 @@ static void print_usage( FILE* file, const char* argv0 )
 {
   print_version( file );
   fprintf( file,
-           "\nUsage: %s [-# 'ARGS'] [-L [BIND:]PORT:HOST:HOSTPORT] IP PORT\n"
+           "\nUsage: %s [-# 'ARGS'] [-L [BIND:]PORT:HOST:HOSTPORT] [-T [BIND:]PORT:HOST:HOSTPORT] [-t] IP PORT\n"
            "       %s -c\n",
            argv0,
            argv0 );
@@ -108,7 +108,8 @@ static void print_colorcount( void )
 int main( int argc, char* argv[] )
 {
   unsigned int verbose = 0;
-  std::vector<std::string> udp_forwards;
+  std::vector<std::string> udp_forwards, tcp_forwards;
+  bool tcp_tun = false;
   /* For security, make sure we don't dump core */
   Crypto::disable_dumping_core();
 
@@ -128,7 +129,7 @@ int main( int argc, char* argv[] )
   }
 
   int opt;
-  while ( ( opt = getopt( argc, argv, "#:cvL:" ) ) != -1 ) {
+  while ( ( opt = getopt( argc, argv, "#:cvL:T:t" ) ) != -1 ) {
     switch ( opt ) {
       case '#':
         // Ignore the original arguments to mosh wrapper
@@ -143,6 +144,14 @@ int main( int argc, char* argv[] )
       case 'L':
         /* forward UDP datagrams sent to a local port */
         udp_forwards.push_back( std::string( optarg ) );
+        break;
+      case 'T':
+        /* forward TCP connections made to a local port */
+        tcp_forwards.push_back( std::string( optarg ) );
+        break;
+      case 't':
+        /* use a TUN device for TCP forwarding where possible */
+        tcp_tun = true;
         break;
       default:
         print_usage( stderr, argv[0] );
@@ -195,7 +204,15 @@ int main( int argc, char* argv[] )
 
   bool success = false;
   try {
-    STMClient client( ip, desired_port, key.c_str(), predict_mode, verbose, predict_overwrite, udp_forwards );
+    STMClient client( ip,
+                      desired_port,
+                      key.c_str(),
+                      predict_mode,
+                      verbose,
+                      predict_overwrite,
+                      udp_forwards,
+                      tcp_forwards,
+                      tcp_tun );
     client.init();
 
     try {

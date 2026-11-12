@@ -94,7 +94,7 @@
 #endif
 
 #include "src/network/networktransport-impl.h"
-#include "src/network/udpforward.h"
+#include "src/network/forwarding.h"
 
 using ServerConnection = Network::Transport<Terminal::Complete, Network::UserStream>;
 
@@ -102,7 +102,7 @@ static void serve( int host_fd,
                    int pipe_fd,
                    Terminal::Complete& terminal,
                    ServerConnection& network,
-                   Network::UDPForwarder* forwarder,
+                   Network::Forwarding* forwarder,
                    long network_timeout,
                    long network_signaled_timeout );
 
@@ -113,7 +113,9 @@ static int run_server( const char* desired_ip,
                        const int colors,
                        unsigned int verbose,
                        bool with_motd,
-                       const std::vector<std::string>& udp_forwards );
+                       const std::vector<std::string>& udp_forwards,
+                       const std::vector<std::string>& tcp_forwards,
+                       bool tcp_tun );
 
 static void print_version( FILE* file )
 {
@@ -129,7 +131,7 @@ static void print_usage( FILE* stream, const char* argv0 )
 {
   fprintf( stream,
            "Usage: %s new [-s] [-v] [-i LOCALADDR] [-p PORT[:PORT2]] [-c COLORS] [-l NAME=VALUE]\n"
-           "       [-L [BIND:]PORT:HOST:HOSTPORT] [-- COMMAND...]\n",
+           "       [-L [BIND:]PORT:HOST:HOSTPORT] [-T [BIND:]PORT:HOST:HOSTPORT] [-t] [-- COMMAND...]\n",
            argv0 );
 }
 
@@ -196,7 +198,8 @@ int main( int argc, char* argv[] )
   unsigned int verbose = 0; /* don't close stdin/stdout/stderr */
   /* Will cause mosh-server not to correctly detach on old versions of sshd. */
   std::list<std::string> locale_vars;
-  std::vector<std::string> udp_forwards;
+  std::vector<std::string> udp_forwards, tcp_forwards;
+  bool tcp_tun = false;
 
   /* strip off command */
   for ( int i = 1; i < argc; i++ ) {
@@ -221,7 +224,7 @@ int main( int argc, char* argv[] )
   if ( ( argc >= 2 ) && ( strcmp( argv[1], "new" ) == 0 ) ) {
     /* new option syntax */
     int opt;
-    while ( ( opt = getopt( argc - 1, argv + 1, "@:i:p:c:svl:L:" ) ) != -1 ) {
+    while ( ( opt = getopt( argc - 1, argv + 1, "@:i:p:c:svl:L:T:t" ) ) != -1 ) {
       switch ( opt ) {
           /*
            * This undocumented option does nothing but eat its argument.
@@ -265,6 +268,14 @@ int main( int argc, char* argv[] )
         case 'L':
           /* forward UDP datagrams from the client to HOST:HOSTPORT */
           udp_forwards.push_back( std::string( optarg ) );
+          break;
+        case 'T':
+          /* forward TCP connections from the client to HOST:HOSTPORT */
+          tcp_forwards.push_back( std::string( optarg ) );
+          break;
+        case 't':
+          /* use a TUN device for TCP forwarding where possible */
+          tcp_tun = true;
           break;
         default:
           /* don't die on unknown options */
@@ -381,8 +392,16 @@ int main( int argc, char* argv[] )
   }
 
   try {
-    return run_server(
-      desired_ip, desired_port, command_path, command_argv, colors, verbose, with_motd, udp_forwards );
+    return run_server( desired_ip,
+                       desired_port,
+                       command_path,
+                       command_argv,
+                       colors,
+                       verbose,
+                       with_motd,
+                       udp_forwards,
+                       tcp_forwards,
+                       tcp_tun );
   } catch ( const Network::NetworkException& e ) {
     fprintf( stderr, "Network exception: %s\n", e.what() );
     return 1;
@@ -399,7 +418,9 @@ static int run_server( const char* desired_ip,
                        const int colors,
                        unsigned int verbose,
                        bool with_motd,
-                       const std::vector<std::string>& udp_forwards )
+                       const std::vector<std::string>& udp_forwards,
+                       const std::vector<std::string>& tcp_forwards,
+                       bool tcp_tun )
 {
   /* get network idle timeout */
   long network_timeout = 0;
@@ -450,12 +471,18 @@ static int run_server( const char* desired_ip,
   network->set_verbose( verbose );
   Select::set_verbose( verbose );
 
-  /* UDP forwarding.  Resolve the targets now, while we can still complain. */
-  std::unique_ptr<Network::UDPForwarder> forwarder;
-  if ( !udp_forwards.empty() ) {
-    forwarder.reset( new Network::UDPForwarder( network.get(), Network::UDPForwarder::CONNECT, udp_forwards ) );
+  /* Port forwarding.  Resolve the targets now, while we can still complain. */
+  std::unique_ptr<Network::Forwarding> forwarder;
+  if ( !udp_forwards.empty() || !tcp_forwards.empty() ) {
+    forwarder.reset( new Network::Forwarding( network.get(), false, udp_forwards, tcp_forwards, tcp_tun ) );
     forwarder->set_verbose( verbose );
-    network->set_sidechannel_sink( forwarder.get() );
+    network->set_sidechannel_sink( forwarder->sink() );
+    if ( verbose ) {
+      const std::vector<std::string> notes = forwarder->notes();
+      for ( std::vector<std::string>::const_iterator it = notes.begin(); it != notes.end(); it++ ) {
+        fprintf( stderr, "%s\n", it->c_str() );
+      }
+    }
   }
 
   /*
@@ -698,7 +725,7 @@ static void serve( int host_fd,
                    int pipe_fd,
                    Terminal::Complete& terminal,
                    ServerConnection& network,
-                   Network::UDPForwarder* forwarder,
+                   Network::Forwarding* forwarder,
                    long network_timeout,
                    long network_signaled_timeout )
 {
@@ -742,6 +769,9 @@ static void serve( int host_fd,
       timeout = std::min( timeout, terminal.wait_time( now ) );
       if ( ( !network.get_remote_state_num() ) || network.shutdown_in_progress() ) {
         timeout = std::min( timeout, 5000 );
+      }
+      if ( forwarder ) {
+        timeout = std::min( timeout, forwarder->wait_time() );
       }
       /*
        * The server goes completely asleep if it has no remote peer.
@@ -885,11 +915,14 @@ static void serve( int host_fd,
         }
       }
 
-      /* replies from UDP forwarding targets go back to the client */
+      /* what forwarding targets send goes back to the client */
       for ( std::vector<int>::const_iterator it = forward_fds.begin(); it != forward_fds.end(); it++ ) {
         if ( sel.read( *it ) ) {
           forwarder->read_fd( *it );
         }
+      }
+      if ( forwarder ) {
+        forwarder->tick();
       }
 
       if ( ( !network.shutdown_in_progress() ) && sel.read( host_fd ) ) {

@@ -36,6 +36,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <string>
+#include <vector>
 
 /*
  * The side channel carries datagrams between the two ends of a mosh
@@ -67,6 +68,38 @@ class SideChannelSink
 public:
   virtual void sidechannel_recv( const std::string& payload ) = 0;
   virtual ~SideChannelSink() {}
+};
+
+/*
+ * Shares the side channel between several users.  The byte after the
+ * magic byte says what kind of payload this is, and so whose it is.
+ */
+class SideChannelMux : public SideChannelSink
+{
+private:
+  std::vector<SideChannelSink*> sinks; /* by type; not owned */
+
+public:
+  SideChannelMux() : sinks() {}
+
+  void set_sink( uint8_t type, SideChannelSink* sink )
+  {
+    if ( sinks.size() <= type ) {
+      sinks.resize( type + 1, NULL );
+    }
+    sinks[type] = sink;
+  }
+
+  void sidechannel_recv( const std::string& payload )
+  {
+    if ( payload.size() < 2 ) {
+      return;
+    }
+    const uint8_t type = static_cast<uint8_t>( payload[1] );
+    if ( type < sinks.size() && sinks[type] ) {
+      sinks[type]->sidechannel_recv( payload );
+    }
+  }
 };
 
 /* Sends side-channel payloads.  Implemented by Transport. */

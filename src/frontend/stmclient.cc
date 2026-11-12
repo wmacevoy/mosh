@@ -271,10 +271,20 @@ void STMClient::main_init( void )
   network->set_verbose( verbose );
   Select::set_verbose( verbose );
 
-  /* UDP forwarding: start listening on the local ports */
-  if ( !udp_forwards.empty() ) {
-    forwarder.reset( new Network::UDPForwarder( network.get(), Network::UDPForwarder::LISTEN, udp_forwards ) );
-    network->set_sidechannel_sink( forwarder.get() );
+  /* Port forwarding: start listening for local applications */
+  if ( !udp_forwards.empty() || !tcp_forwards.empty() ) {
+    forwarder.reset( new Network::Forwarding( network.get(), true, udp_forwards, tcp_forwards, tcp_tun ) );
+    network->set_sidechannel_sink( forwarder->sink() );
+
+    /* With a TUN device asked for, where to connect depends on whether we got one.  Say so. */
+    if ( tcp_tun ) {
+      const std::vector<std::string> notes = forwarder->notes();
+      std::string all;
+      for ( std::vector<std::string>::const_iterator it = notes.begin(); it != notes.end(); it++ ) {
+        all += ( all.empty() ? "" : "; " ) + *it;
+      }
+      forward_notice = std::wstring( all.begin(), all.end() );
+    }
   }
 }
 
@@ -458,6 +468,9 @@ bool STMClient::main( void )
       output_new_frame();
 
       int wait_time = std::min( network->wait_time(), overlays.wait_time() );
+      if ( forwarder ) {
+        wait_time = std::min( wait_time, forwarder->wait_time() );
+      }
 
       /* Handle startup "Connecting..." message */
       if ( still_connecting() ) {
@@ -500,10 +513,26 @@ bool STMClient::main( void )
         process_network_input();
       }
 
-      /* datagrams from local applications to be forwarded to the server */
+      /* what local applications send is forwarded to the server */
       for ( std::vector<int>::const_iterator it = forward_fds.begin(); it != forward_fds.end(); it++ ) {
         if ( sel.read( *it ) ) {
           forwarder->read_fd( *it );
+        }
+      }
+      if ( forwarder ) {
+        forwarder->tick();
+      }
+
+      /* once connected, show for a while how TCP forwards can be reached */
+      if ( !forward_notice.empty() && !still_connecting() ) {
+        if ( !forward_notice_until ) {
+          forward_notice_until = timestamp() + 8000;
+          overlays.get_notification_engine().set_notification_string( forward_notice, true, false );
+        } else if ( timestamp() >= forward_notice_until ) {
+          if ( overlays.get_notification_engine().get_notification_string() == forward_notice ) {
+            overlays.get_notification_engine().set_notification_string( L"" );
+          }
+          forward_notice.clear();
         }
       }
 

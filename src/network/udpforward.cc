@@ -133,13 +133,17 @@ bool ReplayWindow::accept( uint64_t seq )
   return true;
 }
 
-std::string UDPForwarder::encode( uint8_t forward, uint16_t flow_id, uint64_t seq, const std::string& datagram )
+std::string UDPForwarder::encode_frame( uint8_t type,
+                                        uint8_t forward,
+                                        uint16_t flow_id,
+                                        uint64_t seq,
+                                        const std::string& data )
 {
   std::string ret;
-  ret.reserve( HEADER_LEN + datagram.size() );
+  ret.reserve( HEADER_LEN + data.size() );
 
   ret.push_back( static_cast<char>( SIDECHANNEL_MAGIC ) );
-  ret.push_back( static_cast<char>( TYPE_UDP_DATA ) );
+  ret.push_back( static_cast<char>( type ) );
   ret.push_back( static_cast<char>( forward ) );
 
   uint16_t flow_net = htobe16( flow_id );
@@ -148,21 +152,22 @@ std::string UDPForwarder::encode( uint8_t forward, uint16_t flow_id, uint64_t se
   uint64_t seq_net = htobe64( seq );
   ret.append( reinterpret_cast<const char*>( &seq_net ), sizeof( seq_net ) );
 
-  ret.append( datagram );
+  ret.append( data );
   return ret;
 }
 
-bool UDPForwarder::decode( const std::string& payload,
-                           uint8_t& forward,
-                           uint16_t& flow_id,
-                           uint64_t& seq,
-                           std::string& datagram )
+bool UDPForwarder::decode_frame( const std::string& payload,
+                                 uint8_t& type,
+                                 uint8_t& forward,
+                                 uint16_t& flow_id,
+                                 uint64_t& seq,
+                                 std::string& data )
 {
-  if ( payload.size() < HEADER_LEN || static_cast<uint8_t>( payload[0] ) != SIDECHANNEL_MAGIC
-       || static_cast<uint8_t>( payload[1] ) != TYPE_UDP_DATA ) {
+  if ( payload.size() < HEADER_LEN || static_cast<uint8_t>( payload[0] ) != SIDECHANNEL_MAGIC ) {
     return false;
   }
 
+  type = static_cast<uint8_t>( payload[1] );
   forward = static_cast<uint8_t>( payload[2] );
 
   uint16_t flow_net;
@@ -173,8 +178,23 @@ bool UDPForwarder::decode( const std::string& payload,
   memcpy( &seq_net, payload.data() + 5, sizeof( seq_net ) );
   seq = be64toh( seq_net );
 
-  datagram.assign( payload, HEADER_LEN, std::string::npos );
+  data.assign( payload, HEADER_LEN, std::string::npos );
   return true;
+}
+
+std::string UDPForwarder::encode( uint8_t forward, uint16_t flow_id, uint64_t seq, const std::string& datagram )
+{
+  return encode_frame( TYPE_UDP_DATA, forward, flow_id, seq, datagram );
+}
+
+bool UDPForwarder::decode( const std::string& payload,
+                           uint8_t& forward,
+                           uint16_t& flow_id,
+                           uint64_t& seq,
+                           std::string& datagram )
+{
+  uint8_t type;
+  return decode_frame( payload, type, forward, flow_id, seq, datagram ) && type == TYPE_UDP_DATA;
 }
 
 static void set_cloexec( int fd )

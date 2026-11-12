@@ -22,6 +22,8 @@ MOSH_KEY=KEY
 .B mosh-client 
 [\-v]
 [\-L \fR[\fP\fIBIND\fP:\fR]\fP\fIPORT\fP:\fIHOST\fP:\fIHOSTPORT\fP]
+[\-T \fR[\fP\fIBIND\fP:\fR]\fP\fIPORT\fP:\fIHOST\fP:\fIHOSTPORT\fP]
+[\-t]
 IP PORT
 .br
 .B mosh-client 
@@ -52,6 +54,9 @@ The \-L option forwards UDP datagrams from a local port through the
 session, as described in
 .BR mosh (1).
 \fBmosh-server\fP must be given the same specifications in the same order.
+The \-T and \-t options do the same for TCP connections, as described
+under \fB\-\-tcp\-forward\fP and \fB\-\-tcp\-tun\fP in
+.BR mosh (1).
 
 With the \-c option, \fBmosh-client\fP instead prints the number of colors
 of the terminal given by the TERM environment variable.

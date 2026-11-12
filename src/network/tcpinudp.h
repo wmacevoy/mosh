@@ -102,7 +102,9 @@ public:
   std::string options; /* a multiple of 4 bytes, at most MAX_OPTIONS_LEN */
   std::string payload;
 
-  TCPInUDP() : source_port( 0 ), dest_port( 0 ), seq( 0 ), ack( 0 ), flags( 0 ), window( 0 ), options(), payload() {}
+  TCPInUDP()
+    : source_port( 0 ), dest_port( 0 ), seq( 0 ), ack( 0 ), flags( 0 ), window( 0 ), options(), payload()
+  {}
 
   bool has( Flag f ) const { return flags & f; }
 

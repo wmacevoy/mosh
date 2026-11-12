@@ -58,8 +58,8 @@ server.) Occasional echo mistakes are corrected within a network
 round-trip and do not cause lasting effect.
 
 \fBmosh\fP does not support X forwarding or the non-interactive uses
-of SSH, including TCP port forwarding or sshfs (see \fB\-L\fP for
-experimental forwarding of UDP). \fBmosh\fP works through
+of SSH, including sshfs (but see \fB\-L\fP and \fB\-\-tcp\-forward\fP
+for experimental port forwarding). \fBmosh\fP works through
 typical client-side network address translators but requires UDP to
 pass between client and server. By default, \fBmosh\fP uses the ports
 between 60000 and 61000, but allows the user to request a particular
@@ -254,6 +254,39 @@ are dropped.  Forwarding lasts only as long as the terminal session,
 and needs a server that supports it; with an older server nothing is
 forwarded.  Only UDP is forwarded, and only from client to server
 (there is no equivalent of \fBssh \-R\fP).
+
+.TP
+.B \-\-tcp\-forward=\fR[\fP\fIBIND_ADDRESS\fP:\fR]\fP\fIPORT\fP:\fIHOST\fP:\fIHOSTPORT\fP
+Experimental.  Forward TCP connections: a connection made to
+\fIPORT\fP on the local machine is carried inside the mosh session and
+connected by the server to \fIHOST\fP:\fIHOSTPORT\fP, as with
+\fBssh \-L\fP.  \fIBIND_ADDRESS\fP defaults to 127.0.0.1; use \fB*\fP
+for all interfaces, and put IPv6 addresses in square brackets.  The
+option may be repeated.
+
+The connection's TCP segments travel as individual datagrams, which
+mosh itself does not retransmit, so a forwarded connection survives
+roaming and outages as the terminal session does and recovers from
+loss as an ordinary TCP connection would.  Forwarding lasts only as
+long as the terminal session, and needs a server that supports it;
+with an older server, connections are refused.
+
+.TP
+.B \-\-tcp\-tun
+Experimental.  Use a TUN network device for \fB\-\-tcp\-forward\fP
+where possible, so that the operating system's own TCP implementation
+carries forwarded connections rather than the simpler one built into
+mosh.  This needs Linux and the CAP_NET_ADMIN capability (for
+instance, running as root).  Each end decides for itself, and uses
+ordinary sockets as usual if it cannot have a device.
+
+When the client has a TUN device, applications connect to
+\fB10.111.0.2\fP:\fIPORT\fP instead of \fIBIND_ADDRESS\fP:\fIPORT\fP;
+the client says which applies in a message at the top of the screen
+when the session starts.  The server uses a device only for forwards
+whose \fIHOST\fP is an IPv4 address of the server itself.  The client
+and server devices use the networks 10.111.0.0/24 and 10.112.0.0/24,
+which only one session on a machine can use at a time.
 
 .TP
 .B \-\-experimental\-remote\-ip={proxy|local|remote}

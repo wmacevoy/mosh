@@ -52,8 +52,8 @@ TransportSender<MyState>::TransportSender( Connection* s_connection, MyState& in
     sent_states( 1, TimestampedState<MyState>( timestamp(), 0, initial_state ) ),
     assumed_receiver_state( sent_states.begin() ), fragmenter(), next_ack_time( timestamp() ),
     next_send_time( timestamp() ), verbose( 0 ), shutdown_in_progress( false ), shutdown_tries( 0 ),
-    shutdown_start( -1 ), ack_num( 0 ), capabilities( 0 ), pending_data_ack( false ), SEND_MINDELAY( 8 ), last_heard( 0 ), prng(),
-    mindelay_clock( -1 )
+    shutdown_start( -1 ), ack_num( 0 ), capabilities( 0 ), pending_data_ack( false ), SEND_MINDELAY( 8 ),
+    last_heard( 0 ), prng(), mindelay_clock( -1 )
 {}
 
 /* Try to send roughly two frames per RTT, bounded by limits on frame rate */
