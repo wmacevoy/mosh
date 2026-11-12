@@ -52,6 +52,7 @@ private:
   SideChannelMux mux;
   std::unique_ptr<UDPForwarder> udp;
   std::unique_ptr<TCPForwarder> tcp;
+  std::unique_ptr<TCPForwarder> tcp_remote; /* forwards the server listens for (-R) */
 
 public:
   /* Throws NetworkException if a specification can't be parsed, resolved or bound. */
@@ -59,8 +60,9 @@ public:
               bool client,
               const std::vector<std::string>& udp_specs,
               const std::vector<std::string>& tcp_specs,
-              bool tcp_tun )
-    : mux(), udp(), tcp()
+              bool tcp_tun,
+              const std::vector<std::string>& tcp_remote_specs = std::vector<std::string>() )
+    : mux(), udp(), tcp(), tcp_remote()
   {
     if ( !udp_specs.empty() ) {
       udp.reset( new UDPForwarder( link, client ? UDPForwarder::LISTEN : UDPForwarder::CONNECT, udp_specs ) );
@@ -69,10 +71,19 @@ public:
     }
     if ( !tcp_specs.empty() ) {
       tcp.reset( new TCPForwarder( link,
-                                   client ? TCPForwarder::CLIENT : TCPForwarder::SERVER,
+                                   client ? TCPForwarder::LISTEN : TCPForwarder::CONNECT,
                                    tcp_specs,
                                    tcp_tun ? TCPForwarder::TUN : TCPForwarder::ADAPTER ) );
       mux.set_sink( UDPForwarder::TYPE_TCP_SEGMENT, tcp.get() );
+    }
+    if ( !tcp_remote_specs.empty() ) {
+      /* The same again with the ends exchanged.  (Always with sockets: no TUN device yet.) */
+      tcp_remote.reset( new TCPForwarder( link,
+                                          client ? TCPForwarder::CONNECT : TCPForwarder::LISTEN,
+                                          tcp_remote_specs,
+                                          TCPForwarder::ADAPTER,
+                                          UDPForwarder::TYPE_TCP_REVERSE ) );
+      mux.set_sink( UDPForwarder::TYPE_TCP_REVERSE, tcp_remote.get() );
     }
   }
 
@@ -110,10 +121,24 @@ public:
     if ( tcp ) {
       tcp->set_verbose( verbose );
     }
+    if ( tcp_remote ) {
+      tcp_remote->set_verbose( verbose );
+    }
   }
 
   /* What the user should know about how TCP forwards are provided. */
-  std::vector<std::string> notes( void ) const { return tcp ? tcp->get_notes() : std::vector<std::string>(); }
+  std::vector<std::string> notes( void ) const
+  {
+    std::vector<std::string> ret;
+    if ( tcp ) {
+      ret = tcp->get_notes();
+    }
+    if ( tcp_remote ) {
+      const std::vector<std::string> more = tcp_remote->get_notes();
+      ret.insert( ret.end(), more.begin(), more.end() );
+    }
+    return ret;
+  }
 
   std::vector<int> fds( void ) const
   {
@@ -123,6 +148,10 @@ public:
     }
     if ( tcp ) {
       const std::vector<int> more = tcp->fds();
+      ret.insert( ret.end(), more.begin(), more.end() );
+    }
+    if ( tcp_remote ) {
+      const std::vector<int> more = tcp_remote->fds();
       ret.insert( ret.end(), more.begin(), more.end() );
     }
     return ret;
@@ -137,6 +166,9 @@ public:
     if ( tcp ) {
       tcp->read_fd( fd );
     }
+    if ( tcp_remote ) {
+      tcp_remote->read_fd( fd );
+    }
   }
 
   /* Call once per trip around the event loop. */
@@ -145,10 +177,16 @@ public:
     if ( tcp ) {
       tcp->tick();
     }
+    if ( tcp_remote ) {
+      tcp_remote->tick();
+    }
   }
 
   /* Milliseconds until tick() next has something to do; INT_MAX if nothing is pending. */
-  int wait_time( void ) const { return tcp ? tcp->wait_time() : INT_MAX; }
+  int wait_time( void ) const
+  {
+    return std::min( tcp ? tcp->wait_time() : INT_MAX, tcp_remote ? tcp_remote->wait_time() : INT_MAX );
+  }
 };
 
 }

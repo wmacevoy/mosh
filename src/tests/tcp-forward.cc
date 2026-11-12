@@ -47,6 +47,7 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
+#include "src/network/forwarding.h"
 #include "src/network/tcpforward.h"
 #include "src/network/tuntcp.h"
 #include "src/util/timestamp.h"
@@ -223,8 +224,19 @@ static pid_t start_application( uint16_t port, size_t size )
   return pid;
 }
 
-/* Runs both forwarders' event loops until the application exits; returns its exit status. */
-static int pump( TCPForwarder& client, TestLink& to_server, TCPForwarder& server, TestLink& to_client, pid_t app )
+static SideChannelSink& sink_of( TCPForwarder& f )
+{
+  return f;
+}
+
+static SideChannelSink& sink_of( Forwarding& f )
+{
+  return *f.sink();
+}
+
+/* Runs both ends' event loops until the application exits; returns its exit status. */
+template<class End>
+static int pump( End& client, TestLink& to_server, End& server, TestLink& to_client, pid_t app )
 {
   for ( int rounds = 0; rounds < 200000; rounds++ ) {
     freeze_timestamp();
@@ -252,8 +264,8 @@ static int pump( TCPForwarder& client, TestLink& to_server, TCPForwarder& server
     }
     client.tick();
     server.tick();
-    to_server.deliver_to( server );
-    to_client.deliver_to( client );
+    to_server.deliver_to( sink_of( server ) );
+    to_client.deliver_to( sink_of( client ) );
 
     int status;
     if ( waitpid( app, &status, WNOHANG ) == app ) {
@@ -279,8 +291,8 @@ static void test_transfers( void )
   const std::vector<std::string> specs( spec, spec + 2 );
 
   TestLink to_server, to_client;
-  TCPForwarder client( &to_server, TCPForwarder::CLIENT, specs, TCPForwarder::ADAPTER );
-  TCPForwarder server( &to_client, TCPForwarder::SERVER, specs, TCPForwarder::ADAPTER );
+  TCPForwarder client( &to_server, TCPForwarder::LISTEN, specs, TCPForwarder::ADAPTER );
+  TCPForwarder server( &to_client, TCPForwarder::CONNECT, specs, TCPForwarder::ADAPTER );
 
   /* a clean path */
   CHECK( pump( client, to_server, server, to_client, start_application( listen_port, 300000 ) ) == DELIVERED );
@@ -311,6 +323,44 @@ static void test_transfers( void )
 
   /* and it all still works afterwards */
   CHECK( pump( client, to_server, server, to_client, start_application( listen_port, 10000 ) ) == DELIVERED );
+
+  kill( target, SIGTERM );
+  waitpid( target, NULL, 0 );
+}
+
+/* A remote forward (-R) is a forward with the ends exchanged: the server listens, the client connects. */
+static void test_remote( void )
+{
+  uint16_t target_port;
+  const int listener = listening_socket( target_port );
+  const pid_t target = start_target( listener );
+  close( listener );
+
+  const uint16_t local_port = unused_port(), remote_port = unused_port();
+  char spec[64];
+  snprintf( spec, sizeof( spec ), "%d:127.0.0.1:%d", local_port, target_port );
+  const std::vector<std::string> local_specs( 1, spec );
+  snprintf( spec, sizeof( spec ), "%d:127.0.0.1:%d", remote_port, target_port );
+  const std::vector<std::string> remote_specs( 1, spec );
+  const std::vector<std::string> none;
+
+  /* each end has both kinds, sharing one side channel */
+  TestLink to_server, to_client;
+  Forwarding client( &to_server, true, none, local_specs, false, remote_specs );
+  Forwarding server( &to_client, false, none, local_specs, false, remote_specs );
+
+  /* the client listens for the local forward and the server for the remote one, not the other way about */
+  CHECK( client.fds().size() == 1 && server.fds().size() == 1 );
+
+  CHECK( pump( client, to_server, server, to_client, start_application( remote_port, 200000 ) ) == DELIVERED );
+  CHECK( pump( client, to_server, server, to_client, start_application( local_port, 200000 ) ) == DELIVERED );
+
+  /* both at once, with loss: the two directions' segments must not be confused */
+  to_server.lose_one_in = to_client.lose_one_in = 25;
+  const pid_t other = start_application( local_port, 100000 );
+  CHECK( pump( client, to_server, server, to_client, start_application( remote_port, 100000 ) ) == DELIVERED );
+  CHECK( pump( client, to_server, server, to_client, other ) == DELIVERED );
+  CHECK( to_server.lost > 0 && to_client.lost > 0 );
 
   kill( target, SIGTERM );
   waitpid( target, NULL, 0 );
@@ -373,5 +423,6 @@ int main()
 {
   test_ip_packet();
   test_transfers();
+  test_remote();
   return EXIT_SUCCESS;
 }

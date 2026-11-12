@@ -58,7 +58,7 @@ server.) Occasional echo mistakes are corrected within a network
 round-trip and do not cause lasting effect.
 
 \fBmosh\fP does not support X forwarding or the non-interactive uses
-of SSH, including sshfs (but see \fB\-L\fP and \fB\-U\fP
+of SSH, including sshfs (but see \fB\-L\fP, \fB\-R\fP and \fB\-U\fP
 for experimental port forwarding). \fBmosh\fP works through
 typical client-side network address translators but requires UDP to
 pass between client and server. By default, \fBmosh\fP uses the ports
@@ -294,6 +294,20 @@ roaming and outages as the terminal session does and recovers from
 loss as an ordinary TCP connection would.  Forwarding lasts only as
 long as the terminal session, and needs a server that supports it;
 with an older server, connections are refused.
+
+.TP
+.B \-R \fR[\fP\fIBIND_ADDRESS\fP:\fR]\fP\fIPORT\fP:\fIHOST\fP:\fIHOSTPORT\fP
+.TQ
+.B \-\-tcp\-remote\-forward=\fR[\fP\fIBIND_ADDRESS\fP:\fR]\fP\fIPORT\fP:\fIHOST\fP:\fIHOSTPORT\fP
+Experimental.  Forward TCP connections the other way, as with
+\fBssh \-R\fP: a connection made to \fIPORT\fP on the server is carried
+inside the mosh session and connected by the client to
+\fIHOST\fP:\fIHOSTPORT\fP, as seen from the local machine.
+\fIBIND_ADDRESS\fP is an address of the server, and defaults to
+127.0.0.1, so that by default only programs on the server itself can
+use the forward.  The option may be repeated.  Connections made before
+the client has connected, or while the session is shutting down, are
+refused.  A TUN device is never used for these forwards.
 
 .TP
 .B \-\-tcp\-tun

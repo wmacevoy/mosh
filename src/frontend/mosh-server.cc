@@ -115,6 +115,7 @@ static int run_server( const char* desired_ip,
                        bool with_motd,
                        const std::vector<std::string>& udp_forwards,
                        const std::vector<std::string>& tcp_forwards,
+                       const std::vector<std::string>& tcp_remote_forwards,
                        bool tcp_tun,
                        const std::string& fragment_parity );
 
@@ -132,7 +133,8 @@ static void print_usage( FILE* stream, const char* argv0 )
 {
   fprintf( stream,
            "Usage: %s new [-s] [-v] [-i LOCALADDR] [-p PORT[:PORT2]] [-c COLORS] [-l NAME=VALUE]\n"
-           "       [-L [BIND:]PORT:HOST:HOSTPORT] [-U [BIND:]PORT:HOST:HOSTPORT] [-w]\n"
+           "       [-L [BIND:]PORT:HOST:HOSTPORT] [-R [BIND:]PORT:HOST:HOSTPORT]\n"
+           "       [-U [BIND:]PORT:HOST:HOSTPORT] [-w]\n"
            "       [-F auto|always|never]\n"
            "       [-- COMMAND...]\n",
            argv0 );
@@ -201,7 +203,7 @@ int main( int argc, char* argv[] )
   unsigned int verbose = 0; /* don't close stdin/stdout/stderr */
   /* Will cause mosh-server not to correctly detach on old versions of sshd. */
   std::list<std::string> locale_vars;
-  std::vector<std::string> udp_forwards, tcp_forwards;
+  std::vector<std::string> udp_forwards, tcp_forwards, tcp_remote_forwards;
   bool tcp_tun = false;
   std::string fragment_parity = "auto";
 
@@ -228,7 +230,7 @@ int main( int argc, char* argv[] )
   if ( ( argc >= 2 ) && ( strcmp( argv[1], "new" ) == 0 ) ) {
     /* new option syntax */
     int opt;
-    while ( ( opt = getopt( argc - 1, argv + 1, "@:i:p:c:svl:L:U:wF:" ) ) != -1 ) {
+    while ( ( opt = getopt( argc - 1, argv + 1, "@:i:p:c:svl:L:R:U:wF:" ) ) != -1 ) {
       switch ( opt ) {
           /*
            * This undocumented option does nothing but eat its argument.
@@ -272,6 +274,10 @@ int main( int argc, char* argv[] )
         case 'L':
           /* forward TCP connections from the client to HOST:HOSTPORT, as ssh's -L does */
           tcp_forwards.push_back( std::string( optarg ) );
+          break;
+        case 'R':
+          /* listen on PORT here, and forward TCP connections to HOST:HOSTPORT from the client, as ssh's -R does */
+          tcp_remote_forwards.push_back( std::string( optarg ) );
           break;
         case 'U':
           /* forward UDP datagrams from the client to HOST:HOSTPORT */
@@ -409,6 +415,7 @@ int main( int argc, char* argv[] )
                        with_motd,
                        udp_forwards,
                        tcp_forwards,
+                       tcp_remote_forwards,
                        tcp_tun,
                        fragment_parity );
   } catch ( const Network::NetworkException& e ) {
@@ -429,6 +436,7 @@ static int run_server( const char* desired_ip,
                        bool with_motd,
                        const std::vector<std::string>& udp_forwards,
                        const std::vector<std::string>& tcp_forwards,
+                       const std::vector<std::string>& tcp_remote_forwards,
                        bool tcp_tun,
                        const std::string& fragment_parity )
 {
@@ -483,8 +491,9 @@ static int run_server( const char* desired_ip,
 
   /* Port forwarding.  Resolve the targets now, while we can still complain. */
   std::unique_ptr<Network::Forwarding> forwarder;
-  if ( !udp_forwards.empty() || !tcp_forwards.empty() ) {
-    forwarder.reset( new Network::Forwarding( network.get(), false, udp_forwards, tcp_forwards, tcp_tun ) );
+  if ( !udp_forwards.empty() || !tcp_forwards.empty() || !tcp_remote_forwards.empty() ) {
+    forwarder.reset( new Network::Forwarding(
+      network.get(), false, udp_forwards, tcp_forwards, tcp_tun, tcp_remote_forwards ) );
     forwarder->set_verbose( verbose );
     if ( !forwarder->set_fragment_parity( fragment_parity ) ) {
       throw NetworkException(
@@ -610,6 +619,7 @@ static int run_server( const char* desired_ip,
 #endif
 
     /* close server-related file descriptors */
+    forwarder.reset();
     network.reset();
 
     /* set IUTF8 if available */

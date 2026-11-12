@@ -26,6 +26,7 @@ new
 [\-p \fIPORT\fP[:\fIPORT2\fP]]
 [\-c \fICOLORS\fP]
 [\-L \fR[\fP\fIBIND\fP:\fR]\fP\fIPORT\fP:\fIHOST\fP:\fIHOSTPORT\fP]
+[\-R \fR[\fP\fIBIND\fP:\fR]\fP\fIPORT\fP:\fIHOST\fP:\fIHOSTPORT\fP]
 [\-U \fR[\fP\fIBIND\fP:\fR]\fP\fIPORT\fP:\fIHOST\fP:\fIHOSTPORT\fP]
 [\-w]
 [\-F auto|always|never]
@@ -94,6 +95,15 @@ Experimental.  Connect TCP connections that the client forwards (see
 to \fIHOST\fP:\fIHOSTPORT\fP.  The client must be given the same
 specifications in the same order; the server ignores the
 \fIBIND_ADDRESS\fP and \fIPORT\fP parts.
+
+.TP
+.B \-R \fR[\fP\fIBIND_ADDRESS\fP:\fR]\fP\fIPORT\fP:\fIHOST\fP:\fIHOSTPORT\fP
+Experimental.  Listen for TCP connections on
+\fIBIND_ADDRESS\fP:\fIPORT\fP (by default, on 127.0.0.1) and forward
+them to the client, which connects them to \fIHOST\fP:\fIHOSTPORT\fP
+(see \fB\-R\fP in
+.BR mosh (1)).
+The client must be given the same specifications in the same order.
 
 .TP
 .B \-U \fR[\fP\fIBIND_ADDRESS\fP:\fR]\fP\fIPORT\fP:\fIHOST\fP:\fIHOSTPORT\fP

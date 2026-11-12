@@ -74,6 +74,8 @@ my @udp_forwards = ();
 
 my @tcp_forwards = ();
 
+my @tcp_remote_forwards = ();
+
 my $tcp_tun = 0;
 
 my $fragment_parity = undef;
@@ -141,6 +143,12 @@ qq{Usage: $0 [options] [--] [user@]host [command...]
                                 to HOST:HOSTPORT as seen from the server,
                                 as "ssh -L" does
                                 (may be repeated; needs support on the server)
+-R [BIND_ADDRESS:]PORT:HOST:HOSTPORT
+        --tcp-remote-forward=[BIND_ADDRESS:]PORT:HOST:HOSTPORT
+                             forward TCP connections made to PORT on the
+                                server to HOST:HOSTPORT as seen from here,
+                                as "ssh -R" does
+                                (may be repeated; needs support on the server)
         --tcp-tun            use a TUN device for TCP forwarding where
                                 possible (needs CAP_NET_ADMIN; connect to
                                 10.111.0.2:PORT instead)
@@ -204,6 +212,7 @@ GetOptions( 'client=s' => \$client,
 	    'bind-server=s' => \$bind_ip,
 	    'udp-forward|U=s' => \@udp_forwards,
 	    'tcp-forward|L=s' => \@tcp_forwards,
+	    'tcp-remote-forward|R=s' => \@tcp_remote_forwards,
 	    'tcp-tun!' => \$tcp_tun,
 	    'fragment-parity=s' => \$fragment_parity,
 	    'no-fragment-parity' => sub { $fragment_parity = 'never' },
@@ -438,6 +447,10 @@ if ( $pid == 0 ) { # child
     push @server, ( '-L', $_ );
   }
 
+  for ( @tcp_remote_forwards ) {
+    push @server, ( '-R', $_ );
+  }
+
   if ( $tcp_tun ) {
     push @server, '-w';
   }
@@ -521,7 +534,8 @@ if ( $pid == 0 ) { # child
   $ENV{ 'MOSH_PREDICTION_DISPLAY' } = $predict;
   $ENV{ 'MOSH_NO_TERM_INIT' } = '1' if !$term_init;
   exec {$client} ("$client", "-# @cmdline |", ( map { ( '-U', $_ ) } @udp_forwards ),
-		    ( map { ( '-L', $_ ) } @tcp_forwards ), ( $tcp_tun ? ( '-w' ) : () ),
+		    ( map { ( '-L', $_ ) } @tcp_forwards ),
+		    ( map { ( '-R', $_ ) } @tcp_remote_forwards ), ( $tcp_tun ? ( '-w' ) : () ),
 		    ( defined $fragment_parity ? ( '-F', $fragment_parity ) : () ), $ip, $port);
 }
 

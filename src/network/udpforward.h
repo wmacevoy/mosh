@@ -184,6 +184,7 @@ public:
   static constexpr uint8_t TYPE_UDP_DATA = 0;
   static constexpr uint8_t TYPE_TCP_SEGMENT = 1; /* see tcpforward.h */
   static constexpr uint8_t TYPE_UDP_FRAGMENT = 2;
+  static constexpr uint8_t TYPE_TCP_REVERSE = 3; /* TCP segments of forwards the server listens for (-R) */
 
   enum ParityMode
   {

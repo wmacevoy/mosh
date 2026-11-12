@@ -64,13 +64,20 @@
  *
  * The two ends choose independently, and any pairing works.
  *
+ * One end of a forward listens for applications to connect, and the
+ * other connects to the forward's target.  For a local forward (-L) the
+ * client listens; for a remote forward (-R) the server does.  The two
+ * directions are separate TCPForwarders with the roles exchanged, told
+ * apart on the wire by their frame type.
+ *
  * As with UDP forwarding, both ends are given the same list of
  * specifications.  A segment names its specification by index and its
- * connection by the client-side TCP port, which travels in the frame
- * header in place of the UDP forwarder's flow id; the server-side port
- * is implied.  So of a TCPInUDP's two port fields, only the client-side
- * one (source_port going to the server, dest_port coming from it) means
- * anything between a SegmentPort and its SegmentSink.
+ * connection by the TCP port at the listening end, which travels in the
+ * frame header in place of the UDP forwarder's flow id; the port at the
+ * connecting end is implied.  So of a TCPInUDP's two port fields, only
+ * the listening end's (source_port going to the connecting end,
+ * dest_port coming from it) means anything between a SegmentPort and
+ * its SegmentSink.
  */
 
 namespace Network {
@@ -114,8 +121,8 @@ class TCPForwarder : public SideChannelSink, public SegmentSink
 public:
   enum Role
   {
-    CLIENT, /* mosh-client: local applications connect to us */
-    SERVER  /* mosh-server: we connect to the targets */
+    LISTEN, /* applications on this machine connect to us */
+    CONNECT /* we connect to the targets */
   };
 
   enum Device
@@ -129,6 +136,7 @@ public:
 private:
   SideChannelLink* link;
   Role role;
+  uint8_t frame_type;
   unsigned int verbose;
 
   std::unique_ptr<AdapterPort> adapter;
@@ -146,8 +154,15 @@ private:
   TCPForwarder& operator=( const TCPForwarder& );
 
 public:
-  /* Throws NetworkException if a specification can't be parsed, resolved or bound. */
-  TCPForwarder( SideChannelLink* s_link, Role s_role, const std::vector<std::string>& specs, Device device );
+  /*
+   * Throws NetworkException if a specification can't be parsed, resolved or bound.
+   * The two ends of a set of forwards must be given the same frame type.
+   */
+  TCPForwarder( SideChannelLink* s_link,
+                Role s_role,
+                const std::vector<std::string>& specs,
+                Device device,
+                uint8_t s_frame_type = UDPForwarder::TYPE_TCP_SEGMENT );
   ~TCPForwarder();
 
   void set_verbose( unsigned int s_verbose ) { verbose = s_verbose; }

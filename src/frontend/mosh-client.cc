@@ -85,7 +85,8 @@ static void print_usage( FILE* file, const char* argv0 )
 {
   print_version( file );
   fprintf( file,
-           "\nUsage: %s [-# 'ARGS'] [-L [BIND:]PORT:HOST:HOSTPORT] [-U [BIND:]PORT:HOST:HOSTPORT] [-w]\n"
+           "\nUsage: %s [-# 'ARGS'] [-L [BIND:]PORT:HOST:HOSTPORT] [-R [BIND:]PORT:HOST:HOSTPORT]\n"
+           "       [-U [BIND:]PORT:HOST:HOSTPORT] [-w]\n"
            "       [-F auto|always|never] IP PORT\n"
            "       %s -c\n",
            argv0,
@@ -109,7 +110,7 @@ static void print_colorcount( void )
 int main( int argc, char* argv[] )
 {
   unsigned int verbose = 0;
-  std::vector<std::string> udp_forwards, tcp_forwards;
+  std::vector<std::string> udp_forwards, tcp_forwards, tcp_remote_forwards;
   bool tcp_tun = false;
   std::string fragment_parity = "auto";
   /* For security, make sure we don't dump core */
@@ -131,7 +132,7 @@ int main( int argc, char* argv[] )
   }
 
   int opt;
-  while ( ( opt = getopt( argc, argv, "#:cvL:U:wF:" ) ) != -1 ) {
+  while ( ( opt = getopt( argc, argv, "#:cvL:R:U:wF:" ) ) != -1 ) {
     switch ( opt ) {
       case '#':
         // Ignore the original arguments to mosh wrapper
@@ -146,6 +147,10 @@ int main( int argc, char* argv[] )
       case 'L':
         /* forward TCP connections made to a local port, as ssh's -L does */
         tcp_forwards.push_back( std::string( optarg ) );
+        break;
+      case 'R':
+        /* connect to HOST:HOSTPORT from here for TCP connections made to PORT on the server, as ssh's -R does */
+        tcp_remote_forwards.push_back( std::string( optarg ) );
         break;
       case 'U':
         /* forward UDP datagrams sent to a local port */
@@ -219,7 +224,8 @@ int main( int argc, char* argv[] )
                       udp_forwards,
                       tcp_forwards,
                       tcp_tun,
-                      fragment_parity );
+                      fragment_parity,
+                      tcp_remote_forwards );
     client.init();
 
     try {

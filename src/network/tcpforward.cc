@@ -69,26 +69,27 @@ static bool is_local_address( const Addr& addr, socklen_t len )
 TCPForwarder::TCPForwarder( SideChannelLink* s_link,
                             Role s_role,
                             const std::vector<std::string>& specs,
-                            Device device )
-  : link( s_link ), role( s_role ), verbose( 0 ), adapter(), tun(), port_of(), notes(), next_seq( 0 ), replay(),
-    dropped_oversize( 0 )
+                            Device device,
+                            uint8_t s_frame_type )
+  : link( s_link ), role( s_role ), frame_type( s_frame_type ), verbose( 0 ), adapter(), tun(), port_of(), notes(),
+    next_seq( 0 ), replay(), dropped_oversize( 0 )
 {
   if ( specs.size() > MAX_FORWARDS ) {
     throw NetworkException( "TCP forwarding: too many forwarding specifications", 0 );
   }
 
-  adapter.reset( new AdapterPort( this, role == CLIENT ) );
+  adapter.reset( new AdapterPort( this, role == LISTEN ) );
 
   bool tun_failed = false;
 
   for ( size_t i = 0; i < specs.size(); i++ ) {
     const ForwardSpec spec( specs[i] );
 
-    /* the server needs to know where to connect */
+    /* the connecting end needs to know where to connect */
     Addr target;
     socklen_t target_len = 0;
     memset( &target, 0, sizeof( target ) );
-    if ( role == SERVER ) {
+    if ( role == CONNECT ) {
       struct addrinfo hints, *res = NULL;
       memset( &hints, 0, sizeof( hints ) );
       hints.ai_family = AF_UNSPEC;
@@ -107,21 +108,22 @@ TCPForwarder::TCPForwarder( SideChannelLink* s_link,
 
     /*
      * A TUN device makes the kernel on this machine the TCP endpoint.
-     * On the client that is always possible.  On the server it only
-     * reaches targets that are the server itself (and only over IPv4);
-     * anywhere else would need the server to route and translate
-     * addresses, which is the administrator's business, not ours.
+     * At the listening end that is always possible.  At the connecting
+     * end it only reaches targets that are this machine itself (and
+     * only over IPv4); anywhere else would need this machine to route
+     * and translate addresses, which is the administrator's business,
+     * not ours.
      */
     bool want_tun = device == TUN && !tun_failed;
-    if ( want_tun && role == SERVER
+    if ( want_tun && role == CONNECT
          && !( target.sa.sa_family == AF_INET && is_local_address( target, target_len ) ) ) {
       want_tun = false;
-      notes.push_back( "TCP " + specs[i] + ": not an IPv4 address of the server itself; using sockets" );
+      notes.push_back( "TCP " + specs[i] + ": not an IPv4 address of this machine itself; using sockets" );
     }
 
     if ( want_tun && !tun ) {
       try {
-        tun.reset( new TunPort( this, role == CLIENT ) );
+        tun.reset( new TunPort( this, role == LISTEN ) );
       } catch ( const NetworkException& e ) {
         tun_failed = true;
         want_tun = false;
@@ -131,9 +133,9 @@ TCPForwarder::TCPForwarder( SideChannelLink* s_link,
 
     if ( want_tun ) {
       try {
-        const std::string where = ( role == CLIENT ) ? tun->add_listener( i, spec ) : tun->add_target( i, target );
+        const std::string where = ( role == LISTEN ) ? tun->add_listener( i, spec ) : tun->add_target( i, target );
         notes.push_back( "TCP " + specs[i] + ": " + tun->name()
-                         + ( role == CLIENT ? ", connect to " + where : "" ) );
+                         + ( role == LISTEN ? ", connect to " + where : "" ) );
         port_of.push_back( tun.get() );
         continue;
       } catch ( const NetworkException& e ) {
@@ -141,7 +143,7 @@ TCPForwarder::TCPForwarder( SideChannelLink* s_link,
       }
     }
 
-    if ( role == CLIENT ) {
+    if ( role == LISTEN ) {
       const std::string where = adapter->add_listener( i, spec );
       notes.push_back( "TCP " + specs[i] + ": listening on " + where );
     } else {
@@ -215,20 +217,20 @@ void TCPForwarder::to_network( uint8_t forward, const TCPInUDP& segment )
     return;
   }
 
-  const uint16_t client_port = ( role == CLIENT ) ? segment.source_port : segment.dest_port;
+  const uint16_t listener_port = ( role == LISTEN ) ? segment.source_port : segment.dest_port;
   link->sidechannel_send(
-    UDPForwarder::encode_frame( UDPForwarder::TYPE_TCP_SEGMENT, forward, client_port, next_seq++, datagram ) );
+    UDPForwarder::encode_frame( frame_type, forward, listener_port, next_seq++, datagram ) );
 }
 
 void TCPForwarder::sidechannel_recv( const std::string& payload )
 {
   uint8_t type, forward;
-  uint16_t client_port;
+  uint16_t listener_port;
   uint64_t seq;
   std::string datagram;
 
-  if ( !UDPForwarder::decode_frame( payload, type, forward, client_port, seq, datagram )
-       || type != UDPForwarder::TYPE_TCP_SEGMENT || forward >= port_of.size() ) {
+  if ( !UDPForwarder::decode_frame( payload, type, forward, listener_port, seq, datagram ) || type != frame_type
+       || forward >= port_of.size() ) {
     return;
   }
 
@@ -238,9 +240,9 @@ void TCPForwarder::sidechannel_recv( const std::string& payload )
   }
 
   TCPInUDP segment;
-  const bool from_client = ( role == SERVER );
+  const bool from_listener = ( role == CONNECT );
   if ( !TCPInUDP::from_datagram(
-         from_client ? client_port : 0, from_client ? 0 : client_port, datagram, segment ) ) {
+         from_listener ? listener_port : 0, from_listener ? 0 : listener_port, datagram, segment ) ) {
     return;
   }
 
