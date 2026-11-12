@@ -99,7 +99,12 @@ jobs:
         cp src/frontend/mosh-client.exe scripts/mosh dist/mosh-msys2/
         ldd src/frontend/mosh-client.exe | awk '$3 ~ /^\/usr\/bin\// { print $3 }' | sort -u | xargs -I{} cp {} dist/mosh-msys2/
         ls -l dist/mosh-msys2
-        ./dist/mosh-msys2/mosh-client.exe --version
+
+    # From outside MSYS2, as someone without it installed would run it.
+    # (Inside the MSYS2 shell, a second copy of its runtime DLL can't be used.)
+    - name: "check that the collected client runs on its own"
+      shell: pwsh
+      run: .\dist\mosh-msys2\mosh-client.exe --version
 
     - uses: actions/upload-artifact@v4
       with:
