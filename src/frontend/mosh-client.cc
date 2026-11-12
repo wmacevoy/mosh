@@ -85,8 +85,8 @@ static void print_usage( FILE* file, const char* argv0 )
 {
   print_version( file );
   fprintf( file,
-           "\nUsage: %s [-# 'ARGS'] [-L [BIND:]PORT:HOST:HOSTPORT] [-T [BIND:]PORT:HOST:HOSTPORT] [-t] [-F]\n"
-           "       IP PORT\n"
+           "\nUsage: %s [-# 'ARGS'] [-L [BIND:]PORT:HOST:HOSTPORT] [-T [BIND:]PORT:HOST:HOSTPORT] [-t]\n"
+           "       [-F auto|always|never] IP PORT\n"
            "       %s -c\n",
            argv0,
            argv0 );
@@ -111,7 +111,7 @@ int main( int argc, char* argv[] )
   unsigned int verbose = 0;
   std::vector<std::string> udp_forwards, tcp_forwards;
   bool tcp_tun = false;
-  bool fragment_parity = false;
+  std::string fragment_parity = "auto";
   /* For security, make sure we don't dump core */
   Crypto::disable_dumping_core();
 
@@ -131,7 +131,7 @@ int main( int argc, char* argv[] )
   }
 
   int opt;
-  while ( ( opt = getopt( argc, argv, "#:cvL:T:tF" ) ) != -1 ) {
+  while ( ( opt = getopt( argc, argv, "#:cvL:T:tF:" ) ) != -1 ) {
     switch ( opt ) {
       case '#':
         // Ignore the original arguments to mosh wrapper
@@ -156,8 +156,8 @@ int main( int argc, char* argv[] )
         tcp_tun = true;
         break;
       case 'F':
-        /* protect fragmented UDP datagrams with parity */
-        fragment_parity = true;
+        /* when to protect fragmented UDP datagrams with parity */
+        fragment_parity = optarg;
         break;
       default:
         print_usage( stderr, argv[0] );

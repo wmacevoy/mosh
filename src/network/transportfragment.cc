@@ -161,6 +161,7 @@ std::vector<Fragment> Fragmenter::make_fragments( const Instruction& inst, size_
        || ( inst.throwaway_num() != last_instruction.throwaway_num() )
        || ( inst.chaff() != last_instruction.chaff() )
        || ( inst.capabilities() != last_instruction.capabilities() )
+       || ( inst.recv_loss() != last_instruction.recv_loss() )
        || ( inst.protocol_version() != last_instruction.protocol_version() ) || ( last_MTU != MTU ) ) {
     next_instruction_id++;
   }

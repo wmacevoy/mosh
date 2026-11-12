@@ -28,7 +28,7 @@ new
 [\-L \fR[\fP\fIBIND\fP:\fR]\fP\fIPORT\fP:\fIHOST\fP:\fIHOSTPORT\fP]
 [\-T \fR[\fP\fIBIND\fP:\fR]\fP\fIPORT\fP:\fIHOST\fP:\fIHOSTPORT\fP]
 [\-t]
-[\-F]
+[\-F auto|always|never]
 [\-\- command...]
 .br
 .SH DESCRIPTION
@@ -110,9 +110,10 @@ Experimental.  Use a TUN device for \fB\-T\fP where possible (see
 With \fB\-v\fP, the server reports how each forward is provided.
 
 .TP
-.B \-F
-Experimental.  Add parity to the fragments of large datagrams sent to
-the client with \fB\-L\fP (see \fB\-\-fragment\-parity\fP in
+.B \-F \fIMODE\fP
+Experimental.  Whether to add parity to the fragments of large
+datagrams sent to the client with \fB\-L\fP: \fBauto\fP (the default),
+\fBalways\fP or \fBnever\fP (see \fB\-\-fragment\-parity\fP in
 .BR mosh (1)).
 
 .SH ENVIRONMENT VARIABLES

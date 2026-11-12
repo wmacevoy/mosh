@@ -34,6 +34,7 @@
 
 #include <algorithm>
 #include <cerrno>
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -163,17 +164,26 @@ static void xor_into( std::string& parity, const std::string& piece )
   }
 }
 
+unsigned int DatagramAssembly::piece_count( size_t total, size_t max_fragment )
+{
+  if ( max_fragment <= FRAGMENT_HEADER_LEN || total > MAX_DATAGRAM ) {
+    return 0;
+  }
+  const size_t max_piece = max_fragment - FRAGMENT_HEADER_LEN;
+  const size_t count = std::max<size_t>( 2, ( total + max_piece - 1 ) / max_piece );
+  if ( total < count || count > MAX_FRAGMENTS ) {
+    return 0;
+  }
+  return count;
+}
+
 std::vector<std::string> DatagramAssembly::split( const std::string& datagram, size_t max_fragment, bool parity )
 {
   std::vector<std::string> ret;
   const size_t total = datagram.size();
 
-  if ( max_fragment <= FRAGMENT_HEADER_LEN || total > MAX_DATAGRAM ) {
-    return ret;
-  }
-  const size_t max_piece = max_fragment - FRAGMENT_HEADER_LEN;
-  const size_t count = std::max<size_t>( 2, ( total + max_piece - 1 ) / max_piece );
-  if ( total < count || count + ( parity ? groups( count ) : 0 ) > MAX_FRAGMENTS ) {
+  const unsigned int count = piece_count( total, max_fragment );
+  if ( count == 0 || count + ( parity ? groups( count ) : 0 ) > MAX_FRAGMENTS ) {
     return ret;
   }
 
@@ -379,9 +389,10 @@ private:
 }
 
 UDPForwarder::UDPForwarder( SideChannelLink* s_link, Role s_role, const std::vector<std::string>& specs )
-  : link( s_link ), role( s_role ), verbose( 0 ), fragment_parity( false ), forwards(), flows(), next_flow_id( 0 ),
-    next_seq( 0 ), replay(), partials(), finished(), dropped_oversize( 0 ), fragmented( 0 ), reassembled( 0 ),
-    recovered( 0 ), abandoned( 0 )
+  : link( s_link ), role( s_role ), verbose( 0 ), parity_mode( PARITY_AUTO ), forwards(), flows(),
+    next_flow_id( 0 ),
+    next_seq( 0 ), replay(), partials(), finished(), dropped_oversize( 0 ), fragmented( 0 ), with_parity( 0 ),
+    reassembled( 0 ), recovered( 0 ), abandoned( 0 )
 {
   if ( specs.size() > MAX_FORWARDS ) {
     throw NetworkException( "UDP forwarding: too many forwarding specifications", 0 );
@@ -536,10 +547,19 @@ void UDPForwarder::to_network( Flow& flow, const char* data, size_t len )
     return;
   }
 
-  /* Too big to go in one piece. */
+  /* Too big to go in one piece.  Is it worth protecting the pieces? */
   std::vector<std::string> fragments;
+  bool parity = false;
   if ( limit > HEADER_LEN ) {
-    fragments = DatagramAssembly::split( datagram, limit - HEADER_LEN, fragment_parity );
+    const unsigned int count = DatagramAssembly::piece_count( len, limit - HEADER_LEN );
+    parity = parity_mode == PARITY_ALWAYS
+             || ( parity_mode == PARITY_AUTO && parity_worthwhile( link->sidechannel_loss(), count ) );
+    fragments = DatagramAssembly::split( datagram, limit - HEADER_LEN, parity );
+    if ( fragments.empty() && parity ) {
+      /* at the very limit there is room for the pieces but not for parity too */
+      parity = false;
+      fragments = DatagramAssembly::split( datagram, limit - HEADER_LEN, false );
+    }
   }
   if ( fragments.empty() ) {
     if ( verbose && !dropped_oversize ) {
@@ -556,6 +576,13 @@ void UDPForwarder::to_network( Flow& flow, const char* data, size_t len )
     link->sidechannel_send( encode_frame( TYPE_UDP_FRAGMENT, flow.forward, flow.id, next_seq++, *i ) );
   }
   fragmented++;
+  with_parity += parity ? 1 : 0;
+}
+
+bool UDPForwarder::parity_worthwhile( double loss, unsigned int fragments )
+{
+  /* without parity, the datagram arrives only if every fragment does */
+  return 1.0 - pow( 1.0 - loss, fragments ) >= PARITY_WORTHWHILE;
 }
 
 void UDPForwarder::read_fd( int fd )

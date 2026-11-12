@@ -47,7 +47,7 @@ Transport<MyState, RemoteState>::Transport( MyState& initial_state,
   : connection( desired_ip, desired_port ), sender( &connection, initial_state ),
     received_states( 1, TimestampedState<RemoteState>( timestamp(), 0, initial_remote ) ),
     receiver_quench_timer( 0 ), last_receiver_state( initial_remote ), fragments(), verbose( 0 ),
-    sidechannel_sink( NULL ), peer_capabilities( 0 )
+    sidechannel_sink( NULL ), peer_capabilities( 0 ), peer_recv_loss( 0 )
 {
   /* server */
 }
@@ -61,7 +61,7 @@ Transport<MyState, RemoteState>::Transport( MyState& initial_state,
   : connection( key_str, ip, port ), sender( &connection, initial_state ),
     received_states( 1, TimestampedState<RemoteState>( timestamp(), 0, initial_remote ) ),
     receiver_quench_timer( 0 ), last_receiver_state( initial_remote ), fragments(), verbose( 0 ),
-    sidechannel_sink( NULL ), peer_capabilities( 0 )
+    sidechannel_sink( NULL ), peer_capabilities( 0 ), peer_recv_loss( 0 )
 {
   /* client */
 }
@@ -89,6 +89,9 @@ void Transport<MyState, RemoteState>::recv( void )
     }
 
     peer_capabilities = inst.capabilities();
+    if ( inst.has_recv_loss() ) {
+      peer_recv_loss = std::min( inst.recv_loss(), 10000u ) / 10000.0;
+    }
 
     sender.process_acknowledgment_through( inst.ack_num() );
 

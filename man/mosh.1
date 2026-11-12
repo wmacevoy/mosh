@@ -251,21 +251,31 @@ Forwarded datagrams are encrypted and follow the session as the client
 roams, but are otherwise as unreliable as UDP: they are not
 retransmitted or reordered.  Datagrams larger than about 1200 bytes
 are sent in fragments and reassembled at the other end; if any
-fragment is lost, the whole datagram is (but see
-\fB\-\-fragment\-parity\fP).  Forwarding lasts only as long as the terminal session,
+fragment is lost, the whole datagram is, unless parity was sent with
+it (see \fB\-\-fragment\-parity\fP).  Forwarding lasts only as long as the terminal session,
 and needs a server that supports it; with an older server nothing is
 forwarded.  Only UDP is forwarded, and only from client to server
 (there is no equivalent of \fBssh \-R\fP).
 
 .TP
-.B \-\-fragment\-parity
+.B \-\-fragment\-parity={auto|always|never}
 Experimental.  When a datagram forwarded with \fB\-L\fP has to be
-fragmented, send one extra parity fragment for every eight fragments
-or fewer, so that the datagram survives the loss of any one fragment
-in each such group.  This makes large datagrams considerably more
-likely to arrive on a lossy network, at the cost of the extra traffic
-(half as much again for a datagram of two fragments, less for larger
-ones).  Datagrams small enough to be sent whole are not affected.
+fragmented, mosh can send one extra parity fragment for every eight
+fragments or fewer, so that the datagram survives the loss of any one
+fragment in each such group.  This makes large datagrams considerably
+more likely to arrive on a lossy network, at the cost of the extra
+traffic (half as much again for a datagram of two fragments, less for
+larger ones).  Datagrams small enough to be sent whole are not
+affected.
+
+The default is \fBauto\fP: each end measures how many of the session's
+datagrams are being lost, and parity is added to a datagram only when
+it would otherwise be lost at least 2% of the time, which depends on
+that loss rate and on how many fragments the datagram needs.  On a
+network that is not losing anything, no parity is sent.  It can take a
+few seconds for a change in the network to be noticed.  \fBalways\fP
+and \fBnever\fP override this (\fB\-\-no\-fragment\-parity\fP also
+means \fBnever\fP).
 
 .TP
 .B \-\-tcp\-forward=\fR[\fP\fIBIND_ADDRESS\fP:\fR]\fP\fIPORT\fP:\fIHOST\fP:\fIHOSTPORT\fP

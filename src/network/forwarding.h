@@ -79,12 +79,27 @@ public:
   /* Give this to Transport::set_sidechannel_sink(). */
   SideChannelSink* sink( void ) { return &mux; }
 
-  /* Add parity to the UDP datagrams this end has to fragment. */
-  void set_fragment_parity( bool parity )
+  /*
+   * When to add parity to the UDP datagrams this end has to fragment:
+   * "auto" (the default: when the path is lossy enough), "always" or "never".
+   * Returns false if the word isn't one of those.
+   */
+  bool set_fragment_parity( const std::string& mode )
   {
-    if ( udp ) {
-      udp->set_fragment_parity( parity );
+    UDPForwarder::ParityMode m;
+    if ( mode == "auto" ) {
+      m = UDPForwarder::PARITY_AUTO;
+    } else if ( mode == "always" ) {
+      m = UDPForwarder::PARITY_ALWAYS;
+    } else if ( mode == "never" ) {
+      m = UDPForwarder::PARITY_NEVER;
+    } else {
+      return false;
     }
+    if ( udp ) {
+      udp->set_parity_mode( m );
+    }
+    return true;
   }
 
   void set_verbose( unsigned int verbose )

@@ -274,7 +274,10 @@ void STMClient::main_init( void )
   /* Port forwarding: start listening for local applications */
   if ( !udp_forwards.empty() || !tcp_forwards.empty() ) {
     forwarder.reset( new Network::Forwarding( network.get(), true, udp_forwards, tcp_forwards, tcp_tun ) );
-    forwarder->set_fragment_parity( fragment_parity );
+    if ( !forwarder->set_fragment_parity( fragment_parity ) ) {
+      throw Network::NetworkException(
+        "Bad fragment parity mode (" + fragment_parity + "): expected auto, always or never", 0 );
+    }
     network->set_sidechannel_sink( forwarder->sink() );
 
     /* With a TUN device asked for, where to connect depends on whether we got one.  Say so. */

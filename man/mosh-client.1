@@ -24,7 +24,7 @@ MOSH_KEY=KEY
 [\-L \fR[\fP\fIBIND\fP:\fR]\fP\fIPORT\fP:\fIHOST\fP:\fIHOSTPORT\fP]
 [\-T \fR[\fP\fIBIND\fP:\fR]\fP\fIPORT\fP:\fIHOST\fP:\fIHOSTPORT\fP]
 [\-t]
-[\-F]
+[\-F auto|always|never]
 IP PORT
 .br
 .B mosh-client 
@@ -58,7 +58,7 @@ session, as described in
 The \-T and \-t options do the same for TCP connections, as described
 under \fB\-\-tcp\-forward\fP and \fB\-\-tcp\-tun\fP in
 .BR mosh (1).
-The \-F option is \fB\-\-fragment\-parity\fP.
+The \-F option takes the mode described under \fB\-\-fragment\-parity\fP.
 
 With the \-c option, \fBmosh-client\fP instead prints the number of colors
 of the terminal given by the TERM environment variable.

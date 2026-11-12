@@ -246,6 +246,12 @@ static void test_fragments( void )
   CHECK( !reassembles( f, big, 3, 20 ) ); /* a piece and its own group's parity */
   CHECK( reassembles( f, big, 3, 21 ) );  /* a piece and another group's parity */
 
+  /* when parity is worth sending: when the datagram would otherwise be lost 2% of the time or more */
+  CHECK( !UDPForwarder::parity_worthwhile( 0.0, 2 ) && !UDPForwarder::parity_worthwhile( 0.0, 200 ) );
+  CHECK( !UDPForwarder::parity_worthwhile( 0.01, 2 ) && UDPForwarder::parity_worthwhile( 0.01, 3 ) );
+  CHECK( !UDPForwarder::parity_worthwhile( 0.001, 20 ) && UDPForwarder::parity_worthwhile( 0.001, 21 ) );
+  CHECK( UDPForwarder::parity_worthwhile( 0.05, 2 ) && UDPForwarder::parity_worthwhile( 1.0, 2 ) );
+
   /* what can't be done */
   CHECK( DatagramAssembly::split( d, H, false ).empty() );
   CHECK( DatagramAssembly::split( varied( 65507 ), 100 + H, false ).empty() ); /* too many fragments */
@@ -283,11 +289,13 @@ public:
   size_t max_payload;
   std::deque<std::string> sent; /* everything that crossed, for replaying */
   int lose;                     /* lose the datagram this many sends from now (0 is the next); -1 for none */
+  double loss;                  /* what the peer is said to be missing of what we send */
 
-  TestLink() : peer( NULL ), ready( true ), max_payload( 1200 ), sent(), lose( -1 ) {}
+  TestLink() : peer( NULL ), ready( true ), max_payload( 1200 ), sent(), lose( -1 ), loss( 0 ) {}
 
   bool sidechannel_ready( void ) const { return ready; }
   size_t sidechannel_max_payload( void ) const { return max_payload; }
+  double sidechannel_loss( void ) const { return loss; }
   void sidechannel_send( const std::string& payload )
   {
     sent.push_back( payload );
@@ -491,7 +499,7 @@ static void test_relay( void )
   CHECK( server.partial_count() == 0 && server.get_abandoned() == 1 );
 
   /* with parity there is one more fragment, and losing any one of them does no harm */
-  client.set_fragment_parity( true );
+  client.set_parity_mode( UDPForwarder::PARITY_ALWAYS );
   for ( int lost = 0; lost < 4; lost++ ) {
     const uint64_t recovered_before = server.get_recovered();
     crossed = to_server.sent.size();
@@ -525,7 +533,41 @@ static void test_relay( void )
   CHECK( lonely.partial_count() == 0 && lonely.get_reassembled() == 1 && lonely.get_recovered() == 1 );
   CHECK( readable( target ) );
   CHECK( receive( target ) == big );
-  client.set_fragment_parity( false );
+
+  /*
+   * Left to decide for itself, the sender goes by how much the session
+   * is losing and how many fragments the datagram needs.
+   */
+  client.set_parity_mode( UDPForwarder::PARITY_AUTO );
+  const std::string two = varied( 2000 ); /* two fragments; "big" is three */
+  const struct
+  {
+    double loss;
+    const std::string* datagram;
+    bool parity;
+  } cases[] = { { 0.0, &big, false },  { 0.0, &huge, false }, /* a clean path: never */
+                { 0.01, &two, false }, { 0.01, &big, true },  /* 1%: from three fragments up */
+                { 0.05, &two, true },  { 0.001, &big, false }, { 0.001, &huge, true } };
+  for ( size_t i = 0; i < sizeof( cases ) / sizeof( cases[0] ); i++ ) {
+    const uint64_t parity_before = client.get_with_parity();
+    to_server.loss = cases[i].loss;
+    send_to_port( app[0], listen_port, *cases[i].datagram );
+    CHECK( readable( listen_fd ) );
+    client.read_fd( listen_fd );
+    CHECK( readable( target ) && receive( target ) == *cases[i].datagram );
+    CHECK( client.get_with_parity() == parity_before + ( cases[i].parity ? 1 : 0 ) );
+  }
+
+  /* and small datagrams are sent whole as ever */
+  crossed = to_server.sent.size();
+  send_to_port( app[0], listen_port, "small" );
+  CHECK( readable( listen_fd ) );
+  client.read_fd( listen_fd );
+  CHECK( readable( target ) && receive( target ) == "small" );
+  CHECK( to_server.sent.size() == crossed + 1 );
+  to_server.loss = 0;
+
+  client.set_parity_mode( UDPForwarder::PARITY_NEVER );
 
   /* nothing is sent until the peer is known to support forwarding */
   to_server.ready = false;
@@ -548,12 +590,59 @@ static void test_relay( void )
   close( app[1] );
 }
 
+/*
+ * A connection works out how much of what is sent to it goes missing,
+ * from the sequence numbers.  All connections in a process draw their
+ * numbers from one counter, so here every datagram the server sends
+ * leaves a gap in what the client sends, just as a lost one would.
+ */
+static void test_loss_measurement( void )
+{
+  Connection server( "127.0.0.1", NULL );
+  Connection client( server.get_key().c_str(), "127.0.0.1", server.port().c_str() );
+  CHECK( server.get_recv_loss() == 0 && client.get_recv_loss() == 0 );
+
+  struct
+  {
+    int one_in; /* the share that goes "missing"; 0 for none */
+    double low, high;
+  } const phases[]
+    = { { 0, 0.0, 0.0 }, { 10, 0.04, 0.06 }, { 10, 0.07, 0.08 }, { 0, 0.03, 0.04 }, { 4, 0.13, 0.15 } };
+  /* (each measurement is averaged with what went before: 0, 10%/2, (5+10)/2, 7.5/2, (3.75+25)/2) */
+
+  for ( size_t phase = 0; phase < sizeof( phases ) / sizeof( phases[0] ); phase++ ) {
+    for ( int i = 1; i <= 200; i++ ) {
+      if ( phases[phase].one_in && i % phases[phase].one_in == 0 ) {
+        server.send( "this takes a sequence number" );
+        CHECK( readable( client.fds().at( 0 ) ) );
+        client.recv();
+      } else {
+        client.send( "hello" );
+        CHECK( readable( server.fds().at( 0 ) ) );
+        CHECK( server.recv() == "hello" );
+      }
+    }
+    /* a measurement is taken when a datagram arrives after enough time has passed */
+    usleep( 1050 * 1000 );
+    freeze_timestamp();
+    client.send( "hello" );
+    CHECK( readable( server.fds().at( 0 ) ) );
+    CHECK( server.recv() == "hello" );
+
+    if ( !( server.get_recv_loss() >= phases[phase].low && server.get_recv_loss() <= phases[phase].high ) ) {
+      fprintf( stderr, "phase %d: measured %f\n", static_cast<int>( phase ), server.get_recv_loss() );
+    }
+    CHECK( server.get_recv_loss() >= phases[phase].low && server.get_recv_loss() <= phases[phase].high );
+  }
+}
+
 int main()
 {
   test_spec();
   test_wire();
   test_replay();
   test_fragments();
+  test_loss_measurement();
   test_relay();
   return EXIT_SUCCESS;
 }

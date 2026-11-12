@@ -193,6 +193,21 @@ private:
   double SRTT;
   double RTTVAR;
 
+  /*
+   * Loss of what we receive.  Every datagram the peer sends carries the
+   * next sequence number, so the ones missing from those we get were
+   * lost.  (The transport has never needed to know; port forwarding does.)
+   */
+  static const uint64_t LOSS_INTERVAL = 1000; /* ms: measure no more often than this... */
+  static const uint64_t LOSS_MIN_SPAN = 20;   /* ...and over at least this many datagrams */
+  uint64_t loss_start;    /* sequence number at which the current measurement began */
+  uint64_t loss_received; /* how many from there on have arrived */
+  uint64_t loss_since;
+  bool recv_loss_valid;
+  double recv_loss;
+
+  void measure_loss( uint64_t seq );
+
   /* Error from send()/sendto(). */
   std::string send_error;
 
@@ -230,6 +245,9 @@ public:
 
   uint64_t timeout( void ) const;
   double get_SRTT( void ) const { return SRTT; }
+
+  /* The fraction (0 to 1) of the peer's recent datagrams that did not reach us. */
+  double get_recv_loss( void ) const { return recv_loss; }
 
   const Addr& get_remote_addr( void ) const { return remote_addr; }
   socklen_t get_remote_addr_len( void ) const { return remote_addr_len; }

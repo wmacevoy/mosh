@@ -316,6 +316,8 @@ void TransportSender<MyState>::send_in_fragments( const std::string& diff, uint6
   inst.set_chaff( make_chaff() );
   if ( capabilities ) {
     inst.set_capabilities( capabilities );
+    /* a peer that forwards for us wants to know how much of it is getting through */
+    inst.set_recv_loss( lrint( connection->get_recv_loss() * 10000 ) );
   }
 
   if ( new_num == uint64_t( -1 ) ) {

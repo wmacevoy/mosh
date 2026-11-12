@@ -59,8 +59,14 @@
  * A datagram that does not fit in a single mosh datagram is sent as
  * several fragments and put back together at the other end (see
  * DatagramAssembly).  If a fragment is lost, so is the datagram, unless
- * the sender was asked to add parity fragments, from which the receiver
- * can rebuild one lost fragment in every group of eight.
+ * the sender added parity fragments, from which the receiver can
+ * rebuild one lost fragment in every group of eight.
+ *
+ * Whether parity is worth its cost depends on how lossy the path is and
+ * how many fragments a datagram needs, so by default the sender decides
+ * for each datagram: it adds parity when, at the loss rate the session
+ * is seeing (SideChannelLink::sidechannel_loss), the datagram would
+ * otherwise be lost more than PARITY_WORTHWHILE of the time.
  *
  * Both ends are given the same list of forwarding specifications, so
  * nothing but data needs to cross the network: a forwarded datagram
@@ -154,6 +160,9 @@ public:
    */
   static std::vector<std::string> split( const std::string& datagram, size_t max_fragment, bool parity );
 
+  /* How many pieces split() would cut a datagram of this length into; 0 if it can't be done. */
+  static unsigned int piece_count( size_t total, size_t max_fragment );
+
   /* The index a fragment claims, which is also how far its sequence number is from the first one's. */
   static bool index_of( const std::string& fragment, unsigned int& index );
 
@@ -175,6 +184,19 @@ public:
   static constexpr uint8_t TYPE_UDP_DATA = 0;
   static constexpr uint8_t TYPE_TCP_SEGMENT = 1; /* see tcpforward.h */
   static constexpr uint8_t TYPE_UDP_FRAGMENT = 2;
+
+  enum ParityMode
+  {
+    PARITY_AUTO,  /* when the measured loss makes it worthwhile */
+    PARITY_ALWAYS,
+    PARITY_NEVER
+  };
+
+  /* In PARITY_AUTO, add parity if the datagram would otherwise be lost at least this often. */
+  static constexpr double PARITY_WORTHWHILE = 0.02;
+
+  /* Would a datagram of this many fragments be lost often enough, at this loss rate, to deserve parity? */
+  static bool parity_worthwhile( double loss, unsigned int fragments );
 
   /* Datagrams being put back together: how many at once, and for how long. */
   static constexpr size_t MAX_PARTIALS = 64;
@@ -242,7 +264,7 @@ private:
   SideChannelLink* link;
   Role role;
   unsigned int verbose;
-  bool fragment_parity;
+  ParityMode parity_mode;
 
   std::vector<Forward> forwards;
   std::vector<Flow> flows;
@@ -260,7 +282,7 @@ private:
   std::deque<uint64_t> finished; /* recently rebuilt, so stragglers don't start them again */
 
   uint64_t dropped_oversize;
-  uint64_t fragmented, reassembled, recovered, abandoned;
+  uint64_t fragmented, with_parity, reassembled, recovered, abandoned;
 
   void expire_partials( uint64_t now );
   void fragment_recv( uint8_t forward, uint16_t flow_id, uint64_t seq, const std::string& fragment, uint64_t now );
@@ -282,8 +304,8 @@ public:
 
   void set_verbose( unsigned int s_verbose ) { verbose = s_verbose; }
 
-  /* Whether to add parity to the datagrams we fragment.  (What we receive may have it regardless.) */
-  void set_fragment_parity( bool s_parity ) { fragment_parity = s_parity; }
+  /* When to add parity to the datagrams we fragment.  (What we receive may have it regardless.) */
+  void set_parity_mode( ParityMode s_mode ) { parity_mode = s_mode; }
 
   /* Sockets to poll for reading; pass each readable one to read_fd(). */
   std::vector<int> fds( void ) const;
@@ -297,6 +319,7 @@ public:
 
   /* Datagrams we sent in fragments; and of those received so: rebuilt, rebuilt using parity, given up on. */
   uint64_t get_fragmented( void ) const { return fragmented; }
+  uint64_t get_with_parity( void ) const { return with_parity; }
   uint64_t get_reassembled( void ) const { return reassembled; }
   uint64_t get_recovered( void ) const { return recovered; }
   uint64_t get_abandoned( void ) const { return abandoned; }

@@ -32,6 +32,7 @@
 
 #include "src/include/config.h"
 
+#include <algorithm>
 #include <cassert>
 #include <cerrno>
 #include <cstring>
@@ -231,7 +232,8 @@ Connection::Connection( const char* desired_ip, const char* desired_port ) /* se
   : socks(), has_remote_addr( false ), remote_addr(), remote_addr_len( 0 ), server( true ), MTU( DEFAULT_SEND_MTU ),
     key(), session( key ), direction( TO_CLIENT ), saved_timestamp( -1 ), saved_timestamp_received_at( 0 ),
     expected_receiver_seq( 0 ), last_heard( -1 ), last_port_choice( -1 ), last_roundtrip_success( -1 ),
-    RTT_hit( false ), SRTT( 1000 ), RTTVAR( 500 ), send_error()
+    RTT_hit( false ), SRTT( 1000 ), RTTVAR( 500 ), loss_start( 0 ), loss_received( 0 ), loss_since( 0 ),
+    recv_loss_valid( false ), recv_loss( 0 ), send_error()
 {
   setup();
 
@@ -342,7 +344,8 @@ Connection::Connection( const char* key_str, const char* ip, const char* port ) 
   : socks(), has_remote_addr( false ), remote_addr(), remote_addr_len( 0 ), server( false ),
     MTU( DEFAULT_SEND_MTU ), key( key_str ), session( key ), direction( TO_SERVER ), saved_timestamp( -1 ),
     saved_timestamp_received_at( 0 ), expected_receiver_seq( 0 ), last_heard( -1 ), last_port_choice( -1 ),
-    last_roundtrip_success( -1 ), RTT_hit( false ), SRTT( 1000 ), RTTVAR( 500 ), send_error()
+    last_roundtrip_success( -1 ), RTT_hit( false ), SRTT( 1000 ), RTTVAR( 500 ), loss_start( 0 ),
+    loss_received( 0 ), loss_since( 0 ), recv_loss_valid( false ), recv_loss( 0 ), send_error()
 {
   setup();
 
@@ -481,10 +484,12 @@ std::string Connection::recv_one( int sock_to_recv )
 
   if ( p.seq
        < expected_receiver_seq ) { /* don't use (but do return) out-of-order packets for timestamp or targeting */
+    measure_loss( p.seq );
     return p.payload;
   }
   expected_receiver_seq = p.seq + 1; /* this is security-sensitive because a replay attack could otherwise
                                         screw up the timestamp and targeting */
+  measure_loss( p.seq );
 
   if ( p.timestamp != uint16_t( -1 ) ) {
     saved_timestamp = p.timestamp;
@@ -542,6 +547,33 @@ std::string Connection::recv_one( int sock_to_recv )
     fprintf( stderr, "Server now attached to client at %s:%s\n", host, serv );
   }
   return p.payload;
+}
+
+/* Called for each datagram received, after expected_receiver_seq has been brought up to date. */
+void Connection::measure_loss( uint64_t seq )
+{
+  const uint64_t now = timestamp();
+
+  if ( loss_since == 0 ) {
+    loss_since = now;
+  }
+  if ( seq >= loss_start ) {
+    loss_received++; /* (one from before this measurement began was counted as lost then) */
+  }
+
+  const uint64_t span = expected_receiver_seq - loss_start;
+  if ( now - loss_since < LOSS_INTERVAL || span < LOSS_MIN_SPAN ) {
+    return;
+  }
+
+  /* received can exceed span only if datagrams are being duplicated or replayed */
+  const double sample = 1.0 - static_cast<double>( std::min( loss_received, span ) ) / span;
+  recv_loss = recv_loss_valid ? ( recv_loss + sample ) / 2 : sample;
+  recv_loss_valid = true;
+
+  loss_start = expected_receiver_seq;
+  loss_received = 0;
+  loss_since = now;
 }
 
 std::string Connection::port( void ) const

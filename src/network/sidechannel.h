@@ -115,6 +115,9 @@ public:
   /* Payload must begin with SIDECHANNEL_MAGIC. */
   virtual void sidechannel_send( const std::string& payload ) = 0;
 
+  /* The fraction (0 to 1) of what we send that the peer says is not arriving; 0 until it says. */
+  virtual double sidechannel_loss( void ) const = 0;
+
   virtual ~SideChannelLink() {}
 };
 

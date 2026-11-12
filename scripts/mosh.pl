@@ -76,7 +76,7 @@ my @tcp_forwards = ();
 
 my $tcp_tun = 0;
 
-my $fragment_parity = 0;
+my $fragment_parity = undef;
 
 my $use_remote_ip = 'proxy';
 
@@ -128,9 +128,12 @@ qq{Usage: $0 [options] [--] [user@]host [command...]
                                 to HOST:HOSTPORT as seen from the server
                                 (may be repeated; needs support on the server)
 
-        --fragment-parity    add parity to forwarded UDP datagrams that are
-                                too large to send whole, so that they
-                                survive the loss of one fragment
+        --fragment-parity={auto|always|never}
+                             whether to add parity to forwarded UDP
+                                datagrams too large to send whole, so that
+                                they survive the loss of one fragment
+                                (default: "auto", when the network is
+                                losing enough to make it worthwhile)
 
         --tcp-forward=[BIND_ADDRESS:]PORT:HOST:HOSTPORT
                              forward TCP connections made to local PORT
@@ -200,7 +203,8 @@ GetOptions( 'client=s' => \$client,
 	    'udp-forward|L=s' => \@udp_forwards,
 	    'tcp-forward=s' => \@tcp_forwards,
 	    'tcp-tun!' => \$tcp_tun,
-	    'fragment-parity!' => \$fragment_parity,
+	    'fragment-parity=s' => \$fragment_parity,
+	    'no-fragment-parity' => sub { $fragment_parity = 'never' },
 	    'experimental-remote-ip=s' => \$use_remote_ip) or die $usage;
 
 if ( defined $help ) {
@@ -210,6 +214,12 @@ if ( defined $help ) {
 if ( defined $version ) {
     print $version_message;
     exit;
+}
+
+if ( defined $fragment_parity ) {
+  if ( not grep { $_ eq $fragment_parity } qw { auto always never } ) {
+    die "$0: Unknown fragment parity mode \"$fragment_parity\".\n\n$usage";
+  }
 }
 
 if ( defined $predict ) {
@@ -430,8 +440,8 @@ if ( $pid == 0 ) { # child
     push @server, '-t';
   }
 
-  if ( $fragment_parity ) {
-    push @server, '-F';
+  if ( defined $fragment_parity ) {
+    push @server, ( '-F', $fragment_parity );
   }
 
   if ( scalar @command > 0 ) {
@@ -510,7 +520,7 @@ if ( $pid == 0 ) { # child
   $ENV{ 'MOSH_NO_TERM_INIT' } = '1' if !$term_init;
   exec {$client} ("$client", "-# @cmdline |", ( map { ( '-L', $_ ) } @udp_forwards ),
 		    ( map { ( '-T', $_ ) } @tcp_forwards ), ( $tcp_tun ? ( '-t' ) : () ),
-		    ( $fragment_parity ? ( '-F' ) : () ), $ip, $port);
+		    ( defined $fragment_parity ? ( '-F', $fragment_parity ) : () ), $ip, $port);
 }
 
 sub shell_quote { join ' ', map {(my $a = $_) =~ s/'/'\\''/g; "'$a'"} @_ }

@@ -68,6 +68,7 @@ private:
   /* side channel (see sidechannel.h) */
   SideChannelSink* sidechannel_sink;
   uint32_t peer_capabilities;
+  double peer_recv_loss; /* how much of what we send the peer says it is missing */
 
   /* unused */
   Transport( const Transport& );
@@ -157,6 +158,8 @@ public:
   }
 
   void sidechannel_send( const std::string& payload );
+
+  double sidechannel_loss( void ) const { return peer_recv_loss; }
 };
 }
 
