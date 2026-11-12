@@ -253,6 +253,22 @@ static void test_fragments( void )
   CHECK( !UDPForwarder::parity_worthwhile( 0.001, 20 ) && UDPForwarder::parity_worthwhile( 0.001, 21 ) );
   CHECK( UDPForwarder::parity_worthwhile( 0.05, 2 ) && UDPForwarder::parity_worthwhile( 1.0, 2 ) );
 
+  /*
+   * The most pieces a datagram can have is 226, with or without parity,
+   * because the receiver keeps indexes free for parity either way.
+   * (Found by fuzzing: the sender used to allow up to 255 without
+   * parity, which the receiver would then refuse to put together.)
+   */
+  for ( int with_parity = 0; with_parity < 2; with_parity++ ) {
+    const std::string most = varied( 226 * 10 );
+    f = DatagramAssembly::split( most, 10 + H, with_parity );
+    CHECK( f.size() == 226u + ( with_parity ? 29 : 0 ) );
+    CHECK( reassembles( f, most ) );
+    CHECK( DatagramAssembly::split( most + "x", 10 + H, with_parity ).empty() );
+    CHECK( DatagramAssembly::piece_count( most.size(), 10 + H ) == 226 );
+    CHECK( DatagramAssembly::piece_count( most.size() + 1, 10 + H ) == 0 );
+  }
+
   /* what can't be done */
   CHECK( DatagramAssembly::split( d, H, false ).empty() );
   CHECK( DatagramAssembly::split( varied( 65507 ), 100 + H, false ).empty() ); /* too many fragments */

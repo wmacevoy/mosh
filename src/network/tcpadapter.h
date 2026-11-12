@@ -82,6 +82,7 @@ public:
   static constexpr size_t RECV_BUFFER = 256 * 1024;
 
   static constexpr uint32_t DEFAULT_MSS = 536;
+  static constexpr uint32_t MIN_MSS = 64; /* the least we will send at a time, whatever the other end asks */
   static constexpr uint32_t INITIAL_WINDOW_SEGMENTS = 10;
 
   static constexpr uint32_t RTO_INITIAL = 1000; /* ms */
@@ -191,6 +192,7 @@ private:
   void sweep( void );
 
   uint32_t local_mss( void ) const;
+  uint32_t agreed_mss( const std::string& their_options ) const;
   uint16_t window( const Conn& c ) const;
   void emit( Conn& c, uint16_t flags, uint32_t seq, const std::string& payload, bool with_mss = false );
   void reply_reset( uint8_t forward, uint16_t port, const TCPInUDP& to );

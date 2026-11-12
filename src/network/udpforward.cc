@@ -171,7 +171,8 @@ unsigned int DatagramAssembly::piece_count( size_t total, size_t max_fragment )
   }
   const size_t max_piece = max_fragment - FRAGMENT_HEADER_LEN;
   const size_t count = std::max<size_t>( 2, ( total + max_piece - 1 ) / max_piece );
-  if ( total < count || count > MAX_FRAGMENTS ) {
+  /* Indexes must be left for parity whether or not it is sent: the receiver allows for it either way. */
+  if ( total < count || count + groups( count ) > MAX_FRAGMENTS ) {
     return 0;
   }
   return count;
@@ -183,7 +184,7 @@ std::vector<std::string> DatagramAssembly::split( const std::string& datagram, s
   const size_t total = datagram.size();
 
   const unsigned int count = piece_count( total, max_fragment );
-  if ( count == 0 || count + ( parity ? groups( count ) : 0 ) > MAX_FRAGMENTS ) {
+  if ( count == 0 ) {
     return ret;
   }
 
@@ -559,11 +560,6 @@ void UDPForwarder::to_network( Flow& flow, const char* data, size_t len )
     parity = parity_mode == PARITY_ALWAYS
              || ( parity_mode == PARITY_AUTO && parity_worthwhile( link->sidechannel_loss(), count ) );
     fragments = DatagramAssembly::split( datagram, limit - HEADER_LEN, parity );
-    if ( fragments.empty() && parity ) {
-      /* at the very limit there is room for the pieces but not for parity too */
-      parity = false;
-      fragments = DatagramAssembly::split( datagram, limit - HEADER_LEN, false );
-    }
   }
   if ( fragments.empty() ) {
     if ( verbose && !dropped_oversize ) {

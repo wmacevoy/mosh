@@ -40,6 +40,95 @@ jobs:
     - name: "test"
       run: make V=1 check
 
+  # The whole test suite again, with the compiler checking every memory
+  # access and every operation whose behaviour C++ leaves undefined.
+  sanitizers:
+    runs-on: ubuntu-24.04
+
+    env:
+      SANITIZE: -g -O1 -fno-omit-frame-pointer -fsanitize=address,undefined -fno-sanitize-recover=undefined
+      UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: "setup build environment"
+      run: sudo apt update && sudo apt install -y protobuf-compiler libprotobuf-dev libutempter-dev autoconf automake
+
+    - name: "generate build scripts"
+      run: ./autogen.sh
+
+    - name: "configure"
+      run: ./configure CXXFLAGS="$SANITIZE" CFLAGS="$SANITIZE" LDFLAGS="-fsanitize=address,undefined"
+
+    - name: "build"
+      run: make V=1
+
+    - name: "port forwarding tests, also checking for leaks"
+      run: make -C src/tests V=1 check TESTS="udp-forward tcp-in-udp tcp-forward forward-e2e.test"
+      env:
+        ASAN_OPTIONS: detect_leaks=1
+
+    - name: "all tests"
+      run: make V=1 check
+      env:
+        ASAN_OPTIONS: detect_leaks=0
+
+    - name: "show the logs of anything that failed"
+      if: failure()
+      run: |
+        cd src/tests
+        for t in *.trs; do
+          grep -q ':test-result: \(PASS\|SKIP\|XFAIL\)' "$t" || { echo "=== ${t%.trs}"; tail -n 100 "${t%.trs}.log"; }
+        done
+
+  # A short run of each fuzzer on every change: long enough to catch a
+  # regression in what they already reach, not a substitute for running
+  # them for hours.
+  fuzz:
+    runs-on: ubuntu-24.04
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: "setup build environment"
+      run: sudo apt update && sudo apt install -y clang protobuf-compiler libprotobuf-dev libutempter-dev autoconf automake
+
+    - name: "generate build scripts"
+      run: ./autogen.sh
+
+    - name: "configure"
+      run: >-
+        ./configure --enable-fuzzing CC=clang CXX=clang++
+        CXXFLAGS="-g -O1 -fno-omit-frame-pointer -fsanitize=fuzzer-no-link,address,undefined -fno-sanitize-recover=undefined"
+        LDFLAGS="-fsanitize=address,undefined"
+
+    - name: "build"
+      run: make V=1
+
+    - name: "fuzz"
+      run: |
+        cd src/fuzz
+        status=0
+        for fuzzer in forward_frame_fuzzer tcpinudp_fuzzer udp_forward_fuzzer tcp_adapter_fuzzer terminal_parser_fuzzer terminal_fuzzer; do
+          echo "::group::$fuzzer"
+          corpus="${fuzzer%_fuzzer}_corpus"
+          mkdir -p "work/$fuzzer" "crashes/$fuzzer"
+          ./$fuzzer -max_total_time=60 -timeout=20 -rss_limit_mb=2048 -print_final_stats=1 \
+            -artifact_prefix="crashes/$fuzzer/" "work/$fuzzer" $( [ -d "$corpus" ] && echo "$corpus" ) || status=1
+          echo "::endgroup::"
+        done
+        exit $status
+      env:
+        UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
+
+    - name: "keep whatever made a fuzzer fail"
+      if: failure()
+      uses: actions/upload-artifact@v4
+      with:
+        name: fuzz-crashes
+        path: src/fuzz/crashes
+
   # The Windows client, built in MSYS2's POSIX environment (as MSYS2's own
   # mosh package is).  The result needs the MSYS2 runtime DLLs, which are
   # collected alongside it.

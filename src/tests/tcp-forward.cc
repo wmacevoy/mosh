@@ -39,6 +39,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <deque>
+#include <vector>
 
 #include <arpa/inet.h>
 #include <netinet/in.h>
@@ -48,6 +49,7 @@
 #include <unistd.h>
 
 #include "src/network/forwarding.h"
+#include "src/network/tcpadapter.h"
 #include "src/network/tcpforward.h"
 #include "src/util/timestamp.h"
 
@@ -369,8 +371,85 @@ static void test_remote( void )
   waitpid( target, NULL, 0 );
 }
 
+/* The far end of the tunnel, played by the test: it just notes what the adapter sends. */
+class RecordingSink : public SegmentSink
+{
+public:
+  std::vector<TCPInUDP> sent;
+
+  RecordingSink() : sent() {}
+
+  bool segment_ready( void ) const { return true; }
+  size_t max_datagram( void ) const { return 1200; }
+  void to_network( uint8_t, const TCPInUDP& segment ) { sent.push_back( segment ); }
+};
+
+/*
+ * A peer may ask for segments as small as it likes, including of no
+ * bytes at all.  (Found by fuzzing: the adapter used to oblige, sending
+ * empty segments for ever.)
+ */
+static void test_tiny_mss( void )
+{
+  uint16_t target_port;
+  const int listener = listening_socket( target_port );
+  Addr target;
+  memset( &target, 0, sizeof( target ) );
+  target.sin.sin_family = AF_INET;
+  target.sin.sin_addr.s_addr = htonl( INADDR_LOOPBACK );
+  target.sin.sin_port = htons( target_port );
+
+  RecordingSink sink;
+  AdapterPort adapter( &sink, false );
+  adapter.add_target( 0, target, sizeof( target.sin ) );
+
+  /* open a connection, asking for a maximum segment size of zero */
+  TCPInUDP syn;
+  syn.source_port = 1;
+  syn.flags = TCPInUDP::SYN;
+  syn.seq = 100;
+  syn.window = 0xFFFF;
+  syn.options = std::string( "\x02\x04\x00\x00", 4 );
+  freeze_timestamp();
+  adapter.from_network( 0, syn );
+  for ( int i = 0; i < 200 && sink.sent.empty(); i++ ) {
+    usleep( 10000 );
+    freeze_timestamp();
+    adapter.tick( frozen_timestamp() );
+  }
+  CHECK( sink.sent.size() == 1 && sink.sent[0].has( TCPInUDP::SYN ) && sink.sent[0].has( TCPInUDP::ACK ) );
+
+  TCPInUDP ack;
+  ack.source_port = 1;
+  ack.flags = TCPInUDP::ACK;
+  ack.seq = 101;
+  ack.ack = sink.sent[0].seq + 1;
+  ack.window = 0xFFFF;
+  adapter.from_network( 0, ack );
+
+  /* the target has plenty to say */
+  const int app = accept( listener, NULL, NULL );
+  CHECK( app >= 0 );
+  CHECK( write_all( app, std::string( 1000, 'x' ) ) );
+  usleep( 50000 );
+  sink.sent.clear();
+  const std::vector<int> fds = adapter.fds();
+  CHECK( fds.size() == 1 );
+  adapter.read_fd( fds[0] ); /* this used never to return */
+
+  /* it is sent in pieces that are small, but not nothing */
+  CHECK( !sink.sent.empty() );
+  for ( size_t i = 0; i < sink.sent.size(); i++ ) {
+    CHECK( !sink.sent[i].payload.empty() && sink.sent[i].payload.size() <= AdapterPort::MIN_MSS );
+  }
+
+  close( app );
+  close( listener );
+}
+
 int main()
 {
+  test_tiny_mss();
   test_transfers();
   test_remote();
   return EXIT_SUCCESS;

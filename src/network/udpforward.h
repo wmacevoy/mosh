@@ -129,7 +129,7 @@ class DatagramAssembly
 public:
   static constexpr size_t FRAGMENT_HEADER_LEN = 4;
   static constexpr unsigned int PARITY_GROUP = 8;
-  static constexpr unsigned int MAX_FRAGMENTS = 255; /* pieces and parity together */
+  static constexpr unsigned int MAX_FRAGMENTS = 255; /* pieces and parity together, so at most 226 pieces */
   static constexpr size_t MAX_DATAGRAM = 65535;
 
   enum Result

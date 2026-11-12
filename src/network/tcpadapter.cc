@@ -230,10 +230,20 @@ uint32_t AdapterPort::local_mss( void ) const
 {
   /* We send no options after the handshake, so a segment is our 12 bytes of header and its data. */
   const size_t limit = sink->max_datagram();
-  if ( limit < TCPInUDP::DATAGRAM_HEADER_LEN + 64 ) {
-    return 64;
+  if ( limit < TCPInUDP::DATAGRAM_HEADER_LEN + MIN_MSS ) {
+    return MIN_MSS;
   }
   return std::min<size_t>( limit - TCPInUDP::DATAGRAM_HEADER_LEN, 0xFFFF );
+}
+
+/*
+ * How much to send at a time: what the other end asked for, if it fits.
+ * An absurdly small request is not honoured: a peer that asked for
+ * segments of no bytes at all would otherwise have us send for ever.
+ */
+uint32_t AdapterPort::agreed_mss( const std::string& their_options ) const
+{
+  return std::max( MIN_MSS, std::min( mss_option( their_options ), local_mss() ) );
 }
 
 uint16_t AdapterPort::window( const Conn& c ) const
@@ -359,7 +369,7 @@ void AdapterPort::passive_open( uint8_t forward, uint16_t port, const TCPInUDP& 
   c->connect_deadline = now + CONNECT_TIMEOUT;
   c->rcv_nxt = syn.seq + 1;
   c->snd_wnd = syn.window;
-  c->mss = std::min( mss_option( syn.options ), local_mss() );
+  c->mss = agreed_mss( syn.options );
 }
 
 /* Server: our socket has reached the target, so accept the connection from the tunnel. */
@@ -407,7 +417,7 @@ void AdapterPort::from_network( uint8_t forward, const TCPInUDP& segment )
         c->snd_una = c->iss + 1;
         c->rcv_nxt = segment.seq + 1;
         c->snd_wnd = segment.window;
-        c->mss = std::min( mss_option( segment.options ), local_mss() );
+        c->mss = agreed_mss( segment.options );
         c->cwnd = INITIAL_WINDOW_SEGMENTS * c->mss;
         c->rto_deadline = 0;
         c->retries = 0;
@@ -630,6 +640,9 @@ void AdapterPort::output( Conn& c, uint64_t now )
         break;
       }
       const size_t n = std::min<size_t>( std::min<size_t>( unsent, mss ), allowed - flight );
+      if ( n == 0 ) {
+        break; /* (can't happen, but looping here for ever would be the worst way to find out) */
+      }
       emit( c,
             TCPInUDP::ACK | ( n == unsent ? TCPInUDP::PSH : 0 ),
             c.snd_nxt,
