@@ -18,12 +18,13 @@ Everything below was run on Linux over the loopback interface, with the real
 **Mosh's own test suite** passes with these changes (31 pass, 2 expected
 failures and 2 skips, as before, plus the new unit tests).
 
-**New unit tests** (`make check` runs them):
+**New tests** (`make check` runs them):
 
 | Test | Covers |
 |---|---|
 | `udp-forward` | Specification parsing, the frame format, the replay window, fragmentation and parity (every single-fragment loss across a range of sizes), reassembly timeout, the automatic parity decision, loss measurement, and a relay through two forwarders |
 | `tcp-in-udp` | The header transformation in both directions, with checksums checked against independently computed values for IPv4 and IPv6 |
+| `forward-e2e.test` | A real `mosh-server` and `mosh-client` with one forward of each kind (`-L`, `-R`, `-LU`, `-RU`): TCP both ways with an orderly close, and UDP datagrams sent whole and in fragments. Needs `python3`; skipped without it |
 | `tcp-forward` | Real TCP connections through a pair of socket adapters, clean and with 5% of datagrams lost, with a small MTU, a refusing target, a peer that does not support forwarding, and local and remote forwards sharing one session |
 
 **End to end:**
@@ -84,7 +85,7 @@ no security review.
   which mosh does not have, and would lean hard on the built-in TCP.
 - Forwarding of Unix-domain sockets, X11, or the ssh agent.
 - Carrying forwarded TCP with the operating system's own TCP through a TUN
-  device. An earlier version of this branch had it (`--tcp-tun`) and it
+  device. An earlier version of this fork had it (`--tcp-tun`) and it
   worked, but it needed root and Linux, changed the address applications
   connect to, and on the server only reached the server's own addresses, so
   it was removed.

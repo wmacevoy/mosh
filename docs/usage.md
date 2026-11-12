@@ -11,7 +11,7 @@ title: Using it
 Build as you would build mosh, on both the client machine and the server:
 
 ```
-git clone -b udp-forward https://github.com/wmacevoy/mosh.git
+git clone https://github.com/wmacevoy/mosh.git
 cd mosh
 ./autogen.sh
 ./configure

@@ -35,7 +35,7 @@ It aims to support the typical interactive uses of SSH, plus:
 
 Mosh does not support X forwarding or the non-interactive uses of SSH.
 
-This branch adds experimental port forwarding (`-L` and `-R` for TCP as
+This fork adds experimental port forwarding (`-L` and `-R` for TCP as
 in SSH, and `-LU` and `-RU` for UDP), carried inside the mosh session so that it
 roams as the terminal does.  It needs this build at both ends.  See
 https://wmacevoy.github.io/mosh/ or the `docs` directory.

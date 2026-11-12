@@ -6,7 +6,7 @@ title: Port forwarding for mosh
 
 # Port forwarding for mosh
 
-This branch of [mosh](https://mosh.org) adds **experimental port forwarding**:
+This fork of [mosh](https://mosh.org) adds **experimental port forwarding**:
 TCP and UDP, each in both directions, carried inside the mosh session.
 
 ```

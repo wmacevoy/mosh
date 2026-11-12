@@ -52,6 +52,10 @@
 
 using namespace Network;
 
+#ifndef MSG_NOSIGNAL
+#define MSG_NOSIGNAL 0
+#endif
+
 #define CHECK( x )                                                                                                 \
   do {                                                                                                             \
     if ( !( x ) ) {                                                                                                \
