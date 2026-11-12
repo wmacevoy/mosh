@@ -92,6 +92,23 @@ TCPForwarder::TCPForwarder( SideChannelLink* s_link,
 
 TCPForwarder::~TCPForwarder() {}
 
+void TCPForwarder::stream_spawner( const std::function<int()>& spawn )
+{
+  adapter->add_spawner( 0, spawn );
+  forwards = 1;
+}
+
+bool TCPForwarder::stream_open( int fd )
+{
+  forwards = 1;
+  return adapter->open_with( 0, fd, timestamp() );
+}
+
+size_t TCPForwarder::connection_count( void ) const
+{
+  return adapter->connection_count();
+}
+
 std::vector<int> TCPForwarder::fds( void ) const
 {
   return adapter->fds();

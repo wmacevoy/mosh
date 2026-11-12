@@ -34,6 +34,7 @@
 #define TCPADAPTER_HPP
 
 #include <cstdint>
+#include <functional>
 #include <list>
 #include <map>
 #include <string>
@@ -84,8 +85,15 @@ class AdapterPort : public SegmentPort
 {
 public:
   static constexpr size_t MAX_CONNECTIONS = 64;
-  static constexpr size_t SEND_BUFFER = 256 * 1024;
-  static constexpr size_t RECV_BUFFER = 256 * 1024;
+  static constexpr size_t SEND_BUFFER = 1024 * 1024;
+  static constexpr size_t RECV_BUFFER = 1024 * 1024;
+  /*
+   * A TCP header's window field counts to 65535.  With the window scale
+   * option (RFC 7323) it counts in units of this many bits' worth of
+   * bytes instead, if both ends ask for that, so that more than 64 KB
+   * can be on its way at once: without it a long path is a slow one.
+   */
+  static constexpr uint8_t WINDOW_SHIFT = 5;
 
   static constexpr uint32_t DEFAULT_MSS = 536;
   static constexpr uint32_t MIN_MSS = 64; /* the least we will send at a time, whatever the other end asks */
@@ -96,6 +104,13 @@ public:
   static constexpr uint32_t RTO_MAX = 30000;
   static constexpr unsigned int MAX_RETRIES = 10;
   static constexpr unsigned int MAX_SYN_RETRIES = 5;
+  /*
+   * Lost segments are repaired one per round trip, which is right for
+   * the odd one and hopeless for hundreds (a burst that overran the
+   * path).  After this many in one repair, stop: go back to the first
+   * of them and send on from there, slowly at first.
+   */
+  static constexpr unsigned int MANY_HOLES = 3;
   static constexpr uint64_t CONNECT_TIMEOUT = 10000;
   static constexpr int POLL_INTERVAL = 10; /* ms, while waiting to write to a socket */
 
@@ -119,8 +134,9 @@ private:
     Addr addr;
     socklen_t len;
     bool present;
+    std::function<int()> spawn; /* if set: makes the socket itself, connected to whatever it is to reach */
 
-    Target() : addr(), len( 0 ), present( false ) {}
+    Target() : addr(), len( 0 ), present( false ), spawn() {}
   };
 
   struct Conn
@@ -140,10 +156,15 @@ private:
     uint32_t snd_nxt; /* next to send (falls back to snd_una on a timeout) */
     uint32_t snd_max; /* highest ever sent, plus one */
     uint32_t snd_wnd; /* what the other end will accept */
+    uint8_t snd_scale; /* how far to shift the windows it tells us... */
+    uint8_t rcv_scale; /* ...and the ones we tell it (both 0 unless both asked) */
     uint32_t cwnd, ssthresh;
     unsigned int dupacks;
     bool recovering;  /* repairing a loss found by duplicate acknowledgments... */
     uint32_t recover; /* ...which is over when this much is acknowledged */
+    unsigned int holes; /* how many more losses that repair has uncovered */
+    bool resending;     /* sending again from an earlier point, after heavy loss or a timeout, up to recover */
+    uint64_t calm_until; /* ...and for a moment after: its echoes are still coming back */
     bool local_eof;    /* the socket has no more to send */
     bool fin_sent;     /* our FIN lies before snd_nxt */
     bool fin_was_sent; /* ...or did once, at fin_seq */
@@ -167,15 +188,15 @@ private:
     size_t early_bytes;
     bool fin_received;
     bool shut_wr; /* we have passed their FIN on to the socket */
-    uint16_t last_window;
+    uint32_t last_window; /* what we last said we would accept, in bytes */
 
     uint64_t connect_deadline;
 
     Conn()
       : forward( 0 ), port( 0 ), fd( -1 ), state( CONNECTING ), dead( false ), mss( DEFAULT_MSS ), send_buf(),
         iss( 0 ),
-        snd_una( 0 ), snd_nxt( 0 ), snd_max( 0 ), snd_wnd( 0 ), cwnd( 0 ), ssthresh( 0xFFFFFFFF ), dupacks( 0 ),
-        recovering( false ), recover( 0 ),
+        snd_una( 0 ), snd_nxt( 0 ), snd_max( 0 ), snd_wnd( 0 ), snd_scale( 0 ), rcv_scale( 0 ), cwnd( 0 ), ssthresh( 0xFFFFFFFF ), dupacks( 0 ),
+        recovering( false ), recover( 0 ), holes( 0 ), resending( false ), calm_until( 0 ),
         local_eof( false ), fin_sent( false ), fin_was_sent( false ), fin_acked( false ), fin_seq( 0 ),
         rto_deadline( 0 ), rto( RTO_INITIAL ), retries( 0 ), rtt_timing( false ), rtt_seq( 0 ), rtt_start( 0 ),
         rtt_valid( false ), srtt( 0 ), rttvar( 0 ), recv_buf(), rcv_nxt( 0 ), early(), early_bytes( 0 ),
@@ -201,8 +222,8 @@ private:
   uint32_t local_mss( void ) const;
   uint32_t agreed_mss( const std::string& their_options ) const;
   uint32_t settled_rto( const Conn& c ) const;
-  uint16_t window( const Conn& c ) const;
-  void emit( Conn& c, uint16_t flags, uint32_t seq, const std::string& payload, bool with_mss = false );
+  uint32_t window( const Conn& c ) const;
+  void emit( Conn& c, uint16_t flags, uint32_t seq, const std::string& payload, bool with_options = false );
   void reply_reset( uint8_t forward, uint16_t port, const TCPInUDP& to );
 
   void accept_from( const Listener& listener, uint64_t now );
@@ -233,6 +254,17 @@ public:
 
   /* Server: where connections on this forward go. */
   void add_target( uint8_t forward, const Addr& addr, socklen_t len );
+  /*
+   * Server: connections on this forward go to whatever this makes.  It
+   * returns a connected stream socket (one end of a pair, say), or -1.
+   */
+  void add_spawner( uint8_t forward, const std::function<int()>& spawn );
+  /*
+   * Client: a connection on this forward, for a socket we already have,
+   * as if a listener had just accepted it.  False (and the socket is
+   * closed) if it cannot be forwarded now.
+   */
+  bool open_with( uint8_t forward, int fd, uint64_t now );
 
   std::vector<int> fds( void ) const;
   void read_fd( int fd );

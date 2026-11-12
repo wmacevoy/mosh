@@ -2,7 +2,7 @@ EXTRA_DIST = \
 	hold-stdin print-exitstatus \
 	e2e-test e2e-test-server \
 	e2e-test-subrs \
-	forward-e2e.test forward-e2e.py headless-smoke.py relay.test \
+	forward-e2e.test forward-e2e.py headless-smoke.py relay.test mocp.test \
 	mosh-client mosh-server \
 	local.test \
 	$(displaytests) \
@@ -40,8 +40,8 @@ displaytests = \
 	unicode-later-combining.test \
 	window-resize.test
 
-check_PROGRAMS = ocb-aes encrypt-decrypt base64 nonce-incr udp-forward tcp-in-udp tcp-forward inpty is-utf8-locale
-TESTS = ocb-aes encrypt-decrypt base64 nonce-incr udp-forward tcp-in-udp tcp-forward local.test forward-e2e.test relay.test $(displaytests)
+check_PROGRAMS = ocb-aes encrypt-decrypt base64 nonce-incr udp-forward tcp-in-udp tcp-forward file-copy inpty is-utf8-locale
+TESTS = ocb-aes encrypt-decrypt base64 nonce-incr udp-forward tcp-in-udp tcp-forward file-copy local.test forward-e2e.test relay.test mocp.test $(displaytests)
 XFAIL_TESTS = \
 	e2e-failure.test \
 	emulation-attributes-256color8.test
@@ -77,6 +77,10 @@ tcp_in_udp_LDADD = $(nonce_incr_LDADD)
 tcp_forward_SOURCES = tcp-forward.cc
 tcp_forward_CPPFLAGS = $(nonce_incr_CPPFLAGS)
 tcp_forward_LDADD = $(nonce_incr_LDADD)
+
+file_copy_SOURCES = file-copy.cc
+file_copy_CPPFLAGS = $(nonce_incr_CPPFLAGS)
+file_copy_LDADD = $(nonce_incr_LDADD)
 
 inpty_SOURCES = inpty.cc
 inpty_CPPFLAGS = -I$(srcdir)/../util

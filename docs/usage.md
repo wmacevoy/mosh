@@ -201,6 +201,80 @@ its forwards open until you interrupt it (Ctrl-C) or kill it, like `ssh -N`.
   something else for the life of the session: `mosh -N -L ... server -- some-daemon`.
   The session ends when that command does.
 
+## `mocp`: copying files
+
+```
+mocp report.pdf server:docs/          # to the server
+mocp -r server:build/out .            # from it, with everything inside
+mocp 'server:logs/*.txt' logs/        # by pattern (expanded on the server)
+```
+
+`mocp` is `scp` through a mosh session. It needs this build (1.4.0-pf.4 or
+later) at both ends and nothing else. What it adds is what mosh adds:
+
+- **The copy survives the network.** Lose the connection, change networks,
+  close the laptop: the copy waits, and carries on when the server can be
+  reached again. Nothing has to be restarted.
+- **A copy that was stopped carries on where it left off.** If `mocp` itself
+  is killed, or the machine is switched off, run the same command again. What
+  had arrived of a file is checked against the source and the rest is sent.
+- **Nothing is half there.** A file arrives under a temporary name
+  (`.name.mocp-part`) and replaces the real one only when it is whole and its
+  checksum agrees.
+- **What is already there is not sent.** A file with the same size and
+  modification time at the destination is skipped, so repeating a copy of a
+  directory sends only what changed.
+
+Exactly one end is remote, written `[user@]host:path`; a relative path there
+is relative to your home directory. As with `scp`: several sources, or a
+destination that is a directory or ends in `/`, means "put them in there";
+otherwise the one source takes the destination's name. `dir/.` as a source
+means the contents of `dir` rather than `dir` itself.
+
+| Option | |
+|---|---|
+| `-r` | Directories, and everything in them. |
+| `--auto` | Having copied, stay, and copy again whatever changes at the source. |
+| `--delete` | Remove from the destination what is no longer at the source (within the directories copied). |
+| `--interval=SECONDS` | How often `--auto` looks. Default 2. |
+| `-q` | Say only what goes wrong. |
+
+mosh's own connection options (`--ssh`, `--server`, `-p`, `--relay`) work too.
+It exits 0 if everything was copied and 1 if anything was not, and says what
+and why, whichever end the trouble was at.
+
+### `--auto`: keeping a directory up to date
+
+```
+mocp --auto -r --delete server:project/build/. ./build
+```
+
+copies the server's `project/build` into `./build`, and then keeps doing so:
+every two seconds it looks for files that are new, changed or gone, and
+brings `./build` into line. It runs until you interrupt it, through any
+number of network changes in between. It is for the case of building on a
+server and wanting the results on your own machine (or the other way about:
+editing here, running there).
+
+It goes one way only. Changes made at the destination are not sent back, and
+with `--delete` files that exist only at the destination are removed. A
+changed file is sent whole, not as differences, so it suits build output and
+documents better than one enormous file that changes a little; for that,
+`rsync -e 'mosh --stdio'` sends differences.
+
+## `--stdio`: a command's input and output
+
+```
+echo hello | mosh --stdio server -- tr a-z A-Z
+rsync -e 'mosh --stdio' -a project/ server:project/
+```
+
+`mosh --stdio host -- command` runs the command on the server with its
+standard input and output connected to mosh's own, as `ssh host command`
+does, but carried by the mosh session, so the stream outlasts network
+changes. It is what `mocp` is built on. Unlike ssh, the command's standard
+error and its exit status are not brought back.
+
 ## Losing the network
 
 A mosh session survives losing contact with the server, for as long as it
@@ -269,6 +343,7 @@ in the same order:
 | `--fragment-parity=mode` | `-F mode` |
 | `-N` | `-N` (client only; the server is given a command that waits) |
 | `--relay=when` | `MOSH_RELAY=when` and `MOSH_RELAY_COMMAND` in `mosh-client`'s environment (below) |
+| `--stdio`, `--copy` | `-X words` at each end, saying what the process at that end of the stream is (see `mosh-server(1)`) |
 
 `MOSH_RELAY_COMMAND` is the command that reaches a relay on the server, as
 its arguments separated by the unit-separator character (code 31); it is run
@@ -307,6 +382,13 @@ that is nothing but forwards, and run it in the background if you like.
 That is expected of UDP; `--fragment-parity=always` will recover more of
 them at the cost of extra traffic.
 
-**Forwarded TCP is slow on a long, fast path.**
-The built-in TCP is limited to about 64 KB in flight per round trip (roughly
-5 Mbit/s at 100 ms). See [Status and limits](status.md).
+**Forwarded TCP, or a copy, is slower than the network could manage.**
+The built-in TCP recovers from loss less cleverly than an operating system's
+does. See [Status and limits](status.md) for what was measured.
+
+**`mocp` says the mosh on the server is too old.**
+Copying needs 1.4.0-pf.4 or later at both ends. Install it on the server too.
+
+**There are `.name.mocp-part` files at the destination.**
+They are copies that were cut off. Running the same `mocp` again finishes
+them; otherwise they can be deleted.

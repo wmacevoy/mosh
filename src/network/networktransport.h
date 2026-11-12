@@ -140,11 +140,14 @@ public:
   std::string& get_send_error( void ) { return connection.get_send_error(); }
 
   /* Enable the side channel: advertise it to the peer and deliver what arrives to the sink. */
-  void set_sidechannel_sink( SideChannelSink* s_sink )
+  void set_sidechannel_sink( SideChannelSink* s_sink, uint32_t more_capabilities = 0 )
   {
     sidechannel_sink = s_sink;
-    sender.set_capabilities( s_sink ? CAPABILITY_SIDECHANNEL : 0 );
+    sender.set_capabilities( s_sink ? ( CAPABILITY_SIDECHANNEL | more_capabilities ) : 0 );
   }
+
+  /* Whether the peer has said it can do this (a CAPABILITY bit).  Not known until it has been heard from. */
+  bool peer_can( uint32_t capability ) const { return ( peer_capabilities & capability ) == capability; }
 
   bool sidechannel_ready( void ) const
   {

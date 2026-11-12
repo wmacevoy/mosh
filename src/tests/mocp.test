@@ -1,0 +1,92 @@
+#!/bin/sh
+
+#
+# mocp, and the stream it rides on, with real programs: files copied to
+# and from a "server" that is this machine (mosh --local, so no ssh),
+# kept up to date with --auto, and a command run with --stdio.
+#
+
+if ! command -v perl >/dev/null 2>&1; then
+    printf "mocp.test: perl not found\n" >&2
+    exit 77
+fi
+
+. "$(dirname "$0")/e2e-test-subrs"
+if ! set_locale; then
+    printf "mocp.test: no usable locale\n" >&2
+    exit 77
+fi
+
+here=$(pwd)
+client="$here/../frontend/mosh-client"
+server="$here/../frontend/mosh-server"
+mocp="perl $here/../../scripts/mocp --local --client=$client --server=$server"
+mosh="perl $here/../../scripts/mosh --local --client=$client --server=$server"
+
+work=$(mktemp -d 2>/dev/null || mktemp -d -t mocp-test)
+auto=
+trap '[ -n "$auto" ] && kill $auto 2>/dev/null; rm -rf "$work"' EXIT
+mkdir -p "$work/src/sub" "$work/there" "$work/back"
+printf 'hello\n' > "$work/src/a.txt"
+printf 'deep\n' > "$work/src/sub/d.txt"
+# a few megabytes that are not all alike
+i=0
+while [ $i -lt 2000 ]; do printf '%s %s\n' "$i" "the quick brown fox jumps over the lazy dog, again and again and again"; i=$((i + 1)); done > "$work/chunk"
+i=0
+while [ $i -lt 20 ]; do cat "$work/chunk"; i=$((i + 1)); done > "$work/src/big.bin"
+rm "$work/chunk"
+
+status=0
+check() {
+    if [ "$2" = ok ]; then
+        printf '%-58s ok\n' "$1"
+    else
+        printf '%-58s FAIL\n' "$1"
+        status=1
+    fi
+}
+yes_if() { if "$@" >/dev/null 2>&1; then echo ok; else echo no; fi; }
+
+cd "$work" || exit 99
+
+$mocp -q -r src "127.0.0.1:$work/there/" 2>"$work/err"
+check "a directory is copied to the server" "$(yes_if diff -r src there/src)"
+
+said=$($mocp -r src "127.0.0.1:$work/there/" 2>&1)
+check "and not copied again when nothing has changed" "$(case "$said" in *"up to date"*) echo ok ;; esac)"
+
+$mocp -q "127.0.0.1:$work/src/*.txt" "127.0.0.1:$work/src/big.bin" back
+check "files are copied from the server, by pattern" \
+    "$(cmp -s src/a.txt back/a.txt && cmp -s src/big.bin back/big.bin && echo ok)"
+
+$mocp -q src/a.txt "127.0.0.1:$work/there/renamed" && $mocp -q "127.0.0.1:$work/there/renamed" again.txt
+check "one file takes the name it is given, each way" "$(yes_if cmp src/a.txt again.txt)"
+
+$mocp -q "127.0.0.1:$work/nothing-here" back 2>/dev/null
+check "a missing file is an error, reported here" "$([ $? -eq 1 ] && echo ok)"
+
+# kept up to date
+$mocp -q -r --auto --delete --interval=0.2 "127.0.0.1:$work/src/." "$work/mirror" 2>/dev/null &
+auto=$!
+wait_for() {
+    n=0
+    while [ $n -lt 100 ]; do
+        if "$@" >/dev/null 2>&1; then echo ok; return; fi
+        sleep 0.1
+        n=$((n + 1))
+    done
+}
+check "--auto makes the first copy" "$(wait_for diff -r src mirror)"
+printf 'changed\n' > src/a.txt
+printf 'new\n' > src/sub/new.txt
+rm src/sub/d.txt
+check "and then follows changes, additions and removals" "$(wait_for diff -r src mirror)"
+kill $auto 2>/dev/null
+wait $auto 2>/dev/null
+auto=
+
+# the stream by itself
+said=$(printf 'through the stream\n' | $mosh --stdio 127.0.0.1 -- tr a-z A-Z)
+check "--stdio runs a command with its input and output here" "$([ "$said" = "THROUGH THE STREAM" ] && echo ok)"
+
+exit $status

@@ -35,6 +35,7 @@
 
 #include <algorithm>
 #include <climits>
+#include <functional>
 #include <memory>
 #include <string>
 #include <vector>
@@ -54,6 +55,7 @@ private:
   std::unique_ptr<UDPForwarder> udp_remote; /* forwards the server listens for (-RU) */
   std::unique_ptr<TCPForwarder> tcp;
   std::unique_ptr<TCPForwarder> tcp_remote; /* forwards the server listens for (-R) */
+  std::unique_ptr<TCPForwarder> stream;     /* a stream between a process at each end */
 
 public:
   /* Throws NetworkException if a specification can't be parsed, resolved or bound. */
@@ -62,9 +64,18 @@ public:
               const std::vector<std::string>& udp_specs,
               const std::vector<std::string>& tcp_specs,
               const std::vector<std::string>& tcp_remote_specs = std::vector<std::string>(),
-              const std::vector<std::string>& udp_remote_specs = std::vector<std::string>() )
-    : mux(), udp(), udp_remote(), tcp(), tcp_remote()
+              const std::vector<std::string>& udp_remote_specs = std::vector<std::string>(),
+              bool with_stream = false )
+    : mux(), udp(), udp_remote(), tcp(), tcp_remote(), stream()
   {
+    if ( with_stream ) {
+      stream.reset( new TCPForwarder( link,
+                                      client ? TCPForwarder::LISTEN : TCPForwarder::CONNECT,
+                                      std::vector<std::string>(),
+                                      UDPForwarder::TYPE_STREAM ) );
+      stream->stream_allow();
+      mux.set_sink( UDPForwarder::TYPE_STREAM, stream.get() );
+    }
     if ( !udp_specs.empty() ) {
       udp.reset( new UDPForwarder( link, client ? UDPForwarder::LISTEN : UDPForwarder::CONNECT, udp_specs ) );
       mux.set_sink( UDPForwarder::TYPE_UDP_DATA, udp.get() );
@@ -92,6 +103,17 @@ public:
       mux.set_sink( UDPForwarder::TYPE_TCP_REVERSE, tcp_remote.get() );
     }
   }
+
+  /* Server: what makes the socket for the stream when the client opens it. */
+  void set_stream_spawner( const std::function<int()>& spawn )
+  {
+    if ( stream ) {
+      stream->stream_spawner( spawn );
+    }
+  }
+  /* Client: open the stream, for this socket.  False if that can't be done yet. */
+  bool open_stream( int fd ) { return stream && stream->stream_open( fd ); }
+  size_t stream_connections( void ) const { return stream ? stream->connection_count() : 0; }
 
   /* Give this to Transport::set_sidechannel_sink(). */
   SideChannelSink* sink( void ) { return &mux; }
@@ -136,6 +158,9 @@ public:
     if ( tcp_remote ) {
       tcp_remote->set_verbose( verbose );
     }
+    if ( stream ) {
+      stream->set_verbose( verbose );
+    }
   }
 
   std::vector<int> fds( void ) const
@@ -156,6 +181,10 @@ public:
       const std::vector<int> more = tcp_remote->fds();
       ret.insert( ret.end(), more.begin(), more.end() );
     }
+    if ( stream ) {
+      const std::vector<int> more = stream->fds();
+      ret.insert( ret.end(), more.begin(), more.end() );
+    }
     return ret;
   }
 
@@ -174,6 +203,9 @@ public:
     if ( tcp_remote ) {
       tcp_remote->read_fd( fd );
     }
+    if ( stream ) {
+      stream->read_fd( fd );
+    }
   }
 
   /* Call once per trip around the event loop. */
@@ -185,12 +217,16 @@ public:
     if ( tcp_remote ) {
       tcp_remote->tick();
     }
+    if ( stream ) {
+      stream->tick();
+    }
   }
 
   /* Milliseconds until tick() next has something to do; INT_MAX if nothing is pending. */
   int wait_time( void ) const
   {
-    return std::min( tcp ? tcp->wait_time() : INT_MAX, tcp_remote ? tcp_remote->wait_time() : INT_MAX );
+    return std::min( std::min( tcp ? tcp->wait_time() : INT_MAX, tcp_remote ? tcp_remote->wait_time() : INT_MAX ),
+                     stream ? stream->wait_time() : INT_MAX );
   }
 };
 

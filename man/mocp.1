@@ -1,0 +1,124 @@
+.\"                                      Hey, EMACS: -*- nroff -*-
+.\" First parameter, NAME, should be all caps
+.\" Second parameter, SECTION, should be 1-8, maybe w/ subsection
+.\" other parameters are allowed: see man(7), man(1)
+.TH MOCP 1 "April 2013"
+.\" Please adjust this date whenever revising the manpage.
+.\"
+.\" Some roff macros, for reference:
+.\" .nh        disable hyphenation
+.\" .hy        enable hyphenation
+.\" .ad l      left justify
+.\" .ad b      justify to both left and right margins
+.\" .nf        disable filling
+.\" .fi        enable filling
+.\" .br        insert line break
+.\" .sp <n>    insert n+1 empty lines
+.\" for manpage-specific macros, see man(7)
+.SH NAME
+mocp \- copy files through a mosh session
+.SH SYNOPSIS
+.B mocp
+.RI [ options ]
+\fISOURCE\fP...
+\fIDESTINATION\fP
+.br
+.SH DESCRIPTION
+\fBmocp\fP copies files between this machine and another, as
+.BR scp (1)
+does, through a
+.BR mosh (1)
+session instead of an ssh connection.  The copy therefore survives what
+a mosh session survives: losing the network, changing networks, the
+machine sleeping.  It waits, and carries on.  If \fBmocp\fP itself is
+stopped part way, running it again continues from where it got to.
+
+Experimental, and part of an unofficial fork of mosh.  It needs this
+build of mosh (1.4.0-pf.4 or later) at both ends, and a login to the
+other machine by ssh, which is how the session is started.
+
+Exactly one end of a copy is the other machine, written
+[\fIuser\fP@]\fIhost\fP:\fIpath\fP.  A relative \fIpath\fP is relative
+to the home directory there, and \fB~/\fP means the same.  A name with
+a colon after a slash, or after a single letter, is a local file; write
+\fB./a:b\fP for a local file whose name has a colon in it.
+
+With several sources, or a destination that is a directory or ends in
+\fB/\fP, the sources are put in the destination under their own names.
+Otherwise the one source takes the destination as its name.  A source
+directory given as \fIdir\fP\fB/.\fP means what is in it, not the
+directory itself.  Patterns in remote sources (\fBhost:logs/*.txt\fP;
+quote them from your own shell) are expanded on the other machine.
+
+A file arrives under a temporary name
+(\fB.\fP\fIname\fP\fB.mocp-part\fP) and replaces the file of its own
+name only when all of it has arrived and its checksum agrees, so a
+reader of the destination never sees half a file.  A file that is
+already at the destination with the same size and modification time is
+not sent again.  Modification times and permission bits are kept (the
+latter subject to the umask at the destination).
+
+.SH OPTIONS
+.TP
+.B \-r
+Copy directories, and everything in them.  Links to directories are not
+followed.
+
+.TP
+.B \-\-auto
+When the copy is done, do not finish: look at the sources again every
+so often and copy whatever has changed, until interrupted.  With
+\fB\-r\fP this keeps a directory at the destination up to date with one
+at the source, in that one direction.  New and changed files are sent
+whole.  A file that is still being written when it is looked at is sent
+again once it has stopped changing.
+
+.TP
+.B \-\-delete
+Also remove from the destination what is not at the source: once at the
+start, within the directories being copied, and with \fB\-\-auto\fP as
+things are removed from the source.
+
+.TP
+.B \-\-interval=\fISECONDS\fP
+How often \fB\-\-auto\fP looks for changes.  The default is 2.
+
+.TP
+.B \-q
+Say only what goes wrong.
+
+.PP
+The options of
+.BR mosh (1)
+that concern the connection also apply, among them \fB\-\-ssh\fP,
+\fB\-\-server\fP, \fB\-p\fP and \fB\-\-relay\fP.
+
+.SH EXIT STATUS
+0 if everything asked for was copied, 1 if something was not.  What was
+not, and why, is said on standard error, whichever end it happened at.
+
+.SH EXAMPLES
+.nf
+mocp report.pdf server:docs/
+mocp \-r server:build/out .
+mocp \-\-auto \-r \-\-delete server:project/build/. ./build
+mocp 'server:logs/*.txt' logs/
+.fi
+
+.SH NOTES
+Symbolic links are copied as the files they point to.  Ownership,
+special files and hard links are not kept.  Nothing is compressed.
+Changed files are sent whole, not as differences;
+.BR rsync (1)
+can be run through a mosh session with \fBrsync \-e 'mosh \-\-stdio'\fP
+where that matters.
+
+.SH SEE ALSO
+.BR mosh (1),
+.BR scp (1).
+
+Project home page:
+.I https://wmacevoy.github.io/mosh/
+
+.SH BUGS
+Please report bugs to \fIhttps://github.com/wmacevoy/mosh/issues\fP.

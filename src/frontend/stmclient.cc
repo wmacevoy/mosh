@@ -64,6 +64,9 @@
 
 #include "src/network/networktransport-impl.h"
 #include "src/network/relay.h"
+#include "src/network/streamchild.h"
+
+#include <sys/wait.h>
 
 #include <netdb.h>
 
@@ -295,14 +298,19 @@ void STMClient::main_init( void )
 
   /* Port forwarding: start listening for local applications */
   if ( !udp_forwards.empty() || !tcp_forwards.empty() || !tcp_remote_forwards.empty()
-       || !udp_remote_forwards.empty() ) {
-    forwarder.reset( new Network::Forwarding(
-      network.get(), true, udp_forwards, tcp_forwards, tcp_remote_forwards, udp_remote_forwards ) );
+       || !udp_remote_forwards.empty() || !stream_words.empty() ) {
+    forwarder.reset( new Network::Forwarding( network.get(),
+                                              true,
+                                              udp_forwards,
+                                              tcp_forwards,
+                                              tcp_remote_forwards,
+                                              udp_remote_forwards,
+                                              !stream_words.empty() ) );
     if ( !forwarder->set_fragment_parity( fragment_parity ) ) {
       throw Network::NetworkException(
         "Bad fragment parity mode (" + fragment_parity + "): expected auto, always or never", 0 );
     }
-    network->set_sidechannel_sink( forwarder->sink() );
+    network->set_sidechannel_sink( forwarder->sink(), stream_words.empty() ? 0 : Network::CAPABILITY_STREAM );
   }
 }
 
@@ -340,7 +348,7 @@ void STMClient::engage_relay( void )
   relay.sin.sin_port = htons( relay_port );
   network->set_remote_addr( relay, sizeof( relay.sin ) );
 
-  if ( headless ) {
+  if ( headless && stream_words.empty() ) {
     fputs( relay_mode == RELAY_ALWAYS ? "mosh: connecting through ssh.\n"
                                       : "mosh: no answer by UDP; trying through ssh as well.\n",
            stderr );
@@ -364,6 +372,24 @@ void STMClient::consider_relay( void )
   }
 }
 
+/* Has the process at our end of the stream finished?  Then, soon, so have we. */
+void STMClient::tend_stream( void )
+{
+  if ( stream_pid > 0 ) {
+    int status = 0;
+    if ( waitpid( stream_pid, &status, WNOHANG ) == stream_pid ) {
+      stream_status = WIFEXITED( status ) ? WEXITSTATUS( status ) : 128 + WTERMSIG( status );
+      stream_pid = -1;
+      stream_ended = timestamp();
+    }
+  }
+  /* (once the last of what it sent has gone, which should not take long: it had its answers) */
+  if ( stream_pid == -1 && !network->shutdown_in_progress()
+       && ( forwarder->stream_connections() == 0 || timestamp() - stream_ended > 5000 ) ) {
+    network->start_shutdown();
+  }
+}
+
 void STMClient::output_new_frame( void )
 {
   if ( !network ) { /* clean shutdown even when not initialized */
@@ -372,10 +398,31 @@ void STMClient::output_new_frame( void )
 
   if ( headless ) {
     /* Nothing to draw on.  Say once, where a script can see it, that the session is up. */
+    if ( !stream_words.empty() && !announced && !still_connecting()
+         && !network->peer_can( Network::CAPABILITY_STREAM ) ) {
+      /* It has answered, and not said that it can do what we are here for. */
+      announced = true;
+      fputs( "mosh: the mosh on the server is too old for this: it needs to be 1.4.0-pf.4 or later.\n", stderr );
+      stream_pid = -1;
+      stream_ended = timestamp();
+    }
     if ( !announced && !still_connecting() && ( !forwarder || network->sidechannel_ready() ) ) {
       announced = true;
-      fputs( forwarder ? "mosh: connected; forwarding.\n" : "mosh: connected.\n", stderr );
-      fflush( stderr );
+      if ( !stream_words.empty() ) {
+        /* The session is up: start our end of the stream, and ask the server for its end. */
+        pid_t pid = 0;
+        const int fd = Network::stream_child( stream_words, true, &pid );
+        if ( fd < 0 ) {
+          stream_pid = -1;
+          stream_ended = timestamp();
+        } else {
+          stream_pid = pid;
+          forwarder->open_stream( fd ); /* (if it can't be, the process sees its stream end at once) */
+        }
+      } else {
+        fputs( forwarder ? "mosh: connected; forwarding.\n" : "mosh: connected.\n", stderr );
+        fflush( stderr );
+      }
     }
     return;
   }
@@ -541,7 +588,8 @@ bool STMClient::main( void )
 #ifdef HAVE_PLEDGE
   /* OpenBSD pledge() syscall */
   /* (the relay, if there is to be one, is another process and runs ssh) */
-  if ( pledge( relay_mode == RELAY_NEVER ? "stdio inet tty" : "stdio inet tty proc exec", NULL ) ) {
+  if ( stream_words.empty()
+       && pledge( relay_mode == RELAY_NEVER ? "stdio inet tty" : "stdio inet tty proc exec", NULL ) ) {
     perror( "pledge() failed" );
     exit( 1 );
   }
@@ -562,6 +610,9 @@ bool STMClient::main( void )
       /* Handle startup "Connecting..." message */
       if ( still_connecting() ) {
         wait_time = std::min( 250, wait_time );
+      }
+      if ( !stream_words.empty() ) {
+        wait_time = std::min( 50, wait_time ); /* to see its process finish */
       }
 
       /* poll for events */
@@ -676,6 +727,9 @@ bool STMClient::main( void )
       }
 
       consider_relay();
+      if ( !stream_words.empty() ) {
+        tend_stream();
+      }
 
       network->tick();
 

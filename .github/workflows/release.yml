@@ -237,7 +237,7 @@ jobs:
       run: |
         name=mosh-${{ needs.source.outputs.version }}-msys2
         mkdir -p stage/$name dist
-        cp src/frontend/mosh-client.exe src/frontend/mosh-server.exe scripts/mosh COPYING README.md stage/$name/
+        cp src/frontend/mosh-client.exe src/frontend/mosh-server.exe scripts/mosh scripts/mocp COPYING README.md stage/$name/
         strip stage/$name/mosh-client.exe stage/$name/mosh-server.exe
         ldd src/frontend/mosh-client.exe src/frontend/mosh-server.exe \
           | awk '$3 ~ /^\/usr\/bin\// { print $3 }' | sort -u | xargs -I{} cp {} stage/$name/

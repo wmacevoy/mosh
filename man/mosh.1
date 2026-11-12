@@ -334,6 +334,24 @@ killed, or the command on the server ends; if no \fIcommand\fP is
 given, one that simply waits is run there.
 
 .TP
+.B \-\-stdio
+Experimental.  Do not use the terminal: run \fIcommand\fP on the server
+with its standard input and output here, as \fBssh\fP \fIhost command\fP
+does, but through the mosh session, so that the stream between them
+survives what the session survives.  The command is run by the login
+shell there.  Its standard error is not brought back, nor its exit
+status.  This is what
+.BR mocp (1)
+is built on; it also serves as a transport for other programs, for
+example \fBrsync \-e 'mosh \-\-stdio'\fP.
+
+.TP
+.B \-\-copy
+Copy files instead of opening a terminal: see
+.BR mocp (1),
+which is this program under another name.
+
+.TP
 .B \-\-relay=\fIWHEN\fP
 Experimental.  What to do when UDP cannot reach the server, as on a
 network that carries only TCP.  \fBmosh\fP can then carry its datagrams

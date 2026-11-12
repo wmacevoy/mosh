@@ -110,7 +110,7 @@ jobs:
       run: |
         cd src/fuzz
         status=0
-        for fuzzer in forward_frame_fuzzer tcpinudp_fuzzer udp_forward_fuzzer tcp_adapter_fuzzer terminal_parser_fuzzer terminal_fuzzer; do
+        for fuzzer in forward_frame_fuzzer tcpinudp_fuzzer udp_forward_fuzzer tcp_adapter_fuzzer file_copy_fuzzer terminal_parser_fuzzer terminal_fuzzer; do
           echo "::group::$fuzzer"
           corpus="${fuzzer%_fuzzer}_corpus"
           mkdir -p "work/$fuzzer" "crashes/$fuzzer"
@@ -185,7 +185,7 @@ jobs:
     - name: "collect the client and the libraries it needs"
       run: |
         mkdir -p dist/mosh-msys2
-        cp src/frontend/mosh-client.exe src/frontend/mosh-server.exe scripts/mosh dist/mosh-msys2/
+        cp src/frontend/mosh-client.exe src/frontend/mosh-server.exe scripts/mosh scripts/mocp dist/mosh-msys2/
         ldd src/frontend/mosh-client.exe src/frontend/mosh-server.exe | awk '$3 ~ /^\/usr\/bin\// { print $3 }' | sort -u | xargs -I{} cp {} dist/mosh-msys2/
         ls -l dist/mosh-msys2
 

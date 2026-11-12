@@ -15,7 +15,7 @@ narrow, and forwarding widens it considerably.
 Everything below was run on Linux over the loopback interface, with the real
 `mosh-client` and `mosh-server` unless noted.
 
-**Mosh's own test suite** passes with these changes (32 pass, 2 expected
+**Mosh's own test suite** passes with these changes (34 pass, 2 expected
 failures and 2 skips, as before, plus the new unit tests).
 
 **New tests** (`make check` runs them):
@@ -24,6 +24,8 @@ failures and 2 skips, as before, plus the new unit tests).
 |---|---|
 | `udp-forward` | Specification parsing, the frame format, the replay window, fragmentation and parity (every single-fragment loss across a range of sizes), reassembly timeout, the automatic parity decision, loss measurement, and a relay through two forwarders |
 | `tcp-in-udp` | The header transformation in both directions, with checksums checked against independently computed values for IPv4 and IPv6 |
+| `file-copy` | `mocp`'s sender and receiver joined directly: single files and trees, the destination as a name and as a directory, patterns, a copy carried on from a part file (and not from one that is the wrong file), unchanged files skipped, `--delete`, name clashes, and `--auto` following changes, additions and removals |
+| `mocp.test` | The `mocp` and `mosh --stdio` commands with a real `mosh-server` and `mosh-client` (the server being this machine, without ssh): copies in both directions, by pattern, repeated, a missing source reported from the other end, and `--auto --delete` keeping a directory in step. Needs `perl` |
 | `relay.test` | Sessions carried by the relay: from the start; found by the client when UDP gets no answer; with the relay told an address that is not the server's own; over IPv6; with the relay killed part way, after which the session carries on through a new one; and that no relay outlives its client. The remote relay is run directly, where ssh would run it. Needs `python3` |
 | `forward-e2e.test` | A real `mosh-server` and `mosh-client` with one forward of each kind (`-L`, `-R`, `-LU`, `-RU`): TCP both ways with an orderly close, and UDP datagrams sent whole and in fragments. Needs `python3`; skipped without it |
 | `tcp-forward` | Six simulated hours out of contact without losing a connection; and real TCP connections through a pair of socket adapters, clean and with 5% of datagrams lost, with a small MTU, a refusing target, a peer that does not support forwarding, and local and remote forwards sharing one session |
@@ -39,6 +41,10 @@ failures and 2 skips, as before, plus the new unit tests).
 | UDP, 3000-byte datagrams, 5% loss | Request/reply pairs complete 76% of the time without parity, 97.5% with it, 95.5% in `auto` |
 | UDP, 5000-byte datagrams, 1% loss | 89.6% without parity, 99.0% in `auto` |
 | UDP cut off in the middle of a session (`--relay=auto`) | Carries on through the relay about 12 seconds later; goes back to UDP when it returns, and closes the relay a minute after |
+| `mocp` of 12 MB with the path cut for 25 seconds part way | Nothing arrives while it is cut; the copy finishes 7 seconds after, identical |
+| `mocp` killed part way, then run again | The 3.7 MB that had arrived is kept, and the second run sends the rest; identical |
+| `mocp` to a server with an older build | Says at once that the server's mosh is too old |
+| 20 MB through a forward, round trip 100 ms and 300 ms | 8.5-10.6 and 3.9 Mbit/s, where 1.4.0-pf.3 managed 5.2 and 1.7 |
 | New client with an old server, and old client with a new server | Terminal works normally; nothing is forwarded |
 
 ## Checked on every change
@@ -83,6 +89,8 @@ independent review.
 - IPv6 forwarding targets and IPv6 mosh sessions.
 - The `mosh` wrapper over a real ssh connection (only that it passes the
   options to both ends).
+- `mocp` over a real ssh login, between two machines, or on Windows beyond
+  one file each way between programs on the same machine.
 - The relay over a real ssh connection, and on a real network that blocks
   UDP. In the tests the remote relay is started directly and UDP is "blocked"
   by pointing the client at a port nothing answers on.
@@ -91,9 +99,22 @@ independent review.
 
 ## Known limits
 
-**TCP throughput on long paths.** The built-in TCP has no window scaling, so
-at most about 64 KB is in flight per round trip: roughly 5 Mbit/s at 100 ms.
-It also has no selective acknowledgment, so recovery from heavy loss is slow.
+**TCP throughput.** The built-in TCP, which carries forwards and `mocp`, has
+window scaling from 1.4.0-pf.4 but no selective acknowledgment, so each time
+it finds the limit of the path it loses a burst and starts again from the
+loss. Measured on one machine through a path with added delay, it carried
+about 9 Mbit/s at 100 ms round trip and 4 at 300 ms, and 20 to 30 with little
+delay, where the limit was mosh itself handling a datagram at a time. An
+operating system's TCP (so, `scp`) does better on a clean fast path. `mocp`
+is for copies that must survive the network, not for the fastest copy.
+
+**`mocp` sends changed files whole**, does not compress, and with `--auto`
+looks for changes at intervals rather than being told of them. It keeps
+times and permission bits, not ownership, links or special files. Its
+`--auto` goes one way.
+
+**`--stdio` brings back neither the command's standard error nor its exit
+status.**
 
 **No rate limiting.** Forwarded traffic competes with the terminal for the
 same path. A large transfer can make the terminal less responsive.

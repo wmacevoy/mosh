@@ -191,6 +191,7 @@ public:
   static constexpr uint8_t TYPE_TCP_REVERSE = 3; /* TCP segments of forwards the server listens for (-R) */
   static constexpr uint8_t TYPE_UDP_REVERSE_DATA = 4; /* likewise for UDP (-RU) */
   static constexpr uint8_t TYPE_UDP_REVERSE_FRAGMENT = 5;
+  static constexpr uint8_t TYPE_STREAM = 6; /* TCP segments of a stream between a process at each end */
 
   enum ParityMode
   {

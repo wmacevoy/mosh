@@ -95,6 +95,7 @@
 
 #include "src/network/networktransport-impl.h"
 #include "src/network/forwarding.h"
+#include "src/network/streamchild.h"
 #include "src/network/relay.h"
 
 using ServerConnection = Network::Transport<Terminal::Complete, Network::UserStream>;
@@ -118,6 +119,7 @@ static int run_server( const char* desired_ip,
                        const std::vector<std::string>& tcp_forwards,
                        const std::vector<std::string>& tcp_remote_forwards,
                        const std::vector<std::string>& udp_remote_forwards,
+                       const std::string& stream,
                        const std::string& fragment_parity );
 
 static void print_version( FILE* file )
@@ -203,6 +205,7 @@ int main( int argc, char* argv[] )
   /* Will cause mosh-server not to correctly detach on old versions of sshd. */
   std::list<std::string> locale_vars;
   std::vector<std::string> udp_forwards, udp_remote_forwards, tcp_forwards, tcp_remote_forwards;
+  std::string stream;
   std::string fragment_parity = "auto";
 
   /*
@@ -237,7 +240,7 @@ int main( int argc, char* argv[] )
   if ( ( argc >= 2 ) && ( strcmp( argv[1], "new" ) == 0 ) ) {
     /* new option syntax */
     int opt;
-    while ( ( opt = getopt( argc - 1, argv + 1, "@:i:p:c:svl:L:R:F:" ) ) != -1 ) {
+    while ( ( opt = getopt( argc - 1, argv + 1, "@:i:p:c:svl:L:R:F:X:" ) ) != -1 ) {
       switch ( opt ) {
           /*
            * This undocumented option does nothing but eat its argument.
@@ -304,6 +307,14 @@ int main( int argc, char* argv[] )
         case 'F':
           /* when to protect fragmented UDP datagrams with parity */
           fragment_parity = optarg;
+          break;
+        case 'X':
+          /* what to start, and join to the client by a stream, when it asks (streamchild.h) */
+          stream = optarg;
+          if ( !Network::stream_words_valid( Network::stream_words( stream ) ) ) {
+            fprintf( stderr, "%s: -X: not something that can be started\n", argv[0] );
+            exit( 1 );
+          }
           break;
         default:
           /* don't die on unknown options */
@@ -431,6 +442,7 @@ int main( int argc, char* argv[] )
                        tcp_forwards,
                        tcp_remote_forwards,
                        udp_remote_forwards,
+                       stream,
                        fragment_parity );
   } catch ( const Network::NetworkException& e ) {
     fprintf( stderr, "Network exception: %s\n", e.what() );
@@ -452,6 +464,7 @@ static int run_server( const char* desired_ip,
                        const std::vector<std::string>& tcp_forwards,
                        const std::vector<std::string>& tcp_remote_forwards,
                        const std::vector<std::string>& udp_remote_forwards,
+                       const std::string& stream,
                        const std::string& fragment_parity )
 {
   /* get network idle timeout */
@@ -467,6 +480,14 @@ static int run_server( const char* desired_ip,
       fputs( "MOSH_SERVER_NETWORK_TMOUT is negative, ignoring\n", stderr );
       network_timeout = 0;
     }
+  }
+  if ( !stream.empty() && !( timeout_envar && *timeout_envar ) ) {
+    /*
+     * A session for a stream has nobody at a terminal to end it.  If its
+     * client is killed, or its machine never comes back, give up after a
+     * week (a client that is merely away for the night is expected back).
+     */
+    network_timeout = 7 * 24 * 60 * 60;
   }
   /* get network signaled idle timeout */
   long network_signaled_timeout = 0;
@@ -506,15 +527,24 @@ static int run_server( const char* desired_ip,
   /* Port forwarding.  Resolve the targets now, while we can still complain. */
   std::unique_ptr<Network::Forwarding> forwarder;
   if ( !udp_forwards.empty() || !tcp_forwards.empty() || !tcp_remote_forwards.empty()
-       || !udp_remote_forwards.empty() ) {
-    forwarder.reset( new Network::Forwarding(
-      network.get(), false, udp_forwards, tcp_forwards, tcp_remote_forwards, udp_remote_forwards ) );
+       || !udp_remote_forwards.empty() || !stream.empty() ) {
+    forwarder.reset( new Network::Forwarding( network.get(),
+                                              false,
+                                              udp_forwards,
+                                              tcp_forwards,
+                                              tcp_remote_forwards,
+                                              udp_remote_forwards,
+                                              !stream.empty() ) );
+    if ( !stream.empty() ) {
+      const std::vector<std::string> words = Network::stream_words( stream );
+      forwarder->set_stream_spawner( [words]() { return Network::stream_child( words, false, NULL ); } );
+    }
     forwarder->set_verbose( verbose );
     if ( !forwarder->set_fragment_parity( fragment_parity ) ) {
       throw NetworkException(
         "Bad fragment parity mode (" + fragment_parity + "): expected auto, always or never", 0 );
     }
-    network->set_sidechannel_sink( forwarder->sink() );
+    network->set_sidechannel_sink( forwarder->sink(), stream.empty() ? 0 : Network::CAPABILITY_STREAM );
   }
 
   /*
@@ -720,7 +750,8 @@ static int run_server( const char* desired_ip,
     /* Drop unnecessary privileges */
 #ifdef HAVE_PLEDGE
     /* OpenBSD pledge() syscall */
-    if ( pledge( "stdio inet tty", NULL ) ) {
+    /* (unless there are processes yet to start, for a stream, and whatever they will do) */
+    if ( stream.empty() && pledge( "stdio inet tty", NULL ) ) {
       perror( "pledge() failed" );
       exit( 1 );
     }

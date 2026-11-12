@@ -35,6 +35,7 @@
 
 #include <climits>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <string>
 #include <vector>
@@ -156,6 +157,17 @@ public:
   ~TCPForwarder();
 
   void set_verbose( unsigned int s_verbose ) { verbose = s_verbose; }
+
+  /*
+   * A forward with no listening port and no address to connect to: a
+   * stream between a socket the LISTEN end already has and one the
+   * CONNECT end makes when asked.  It is forward number 0, and a
+   * forwarder that has one was given no specifications.
+   */
+  void stream_spawner( const std::function<int()>& spawn ); /* CONNECT end */
+  bool stream_open( int fd );                               /* LISTEN end; false if it can't be, now */
+  void stream_allow( void ) { forwards = 1; }
+  size_t connection_count( void ) const;
 
   std::vector<int> fds( void ) const;
   void read_fd( int fd );

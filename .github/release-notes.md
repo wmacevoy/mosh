@@ -4,6 +4,8 @@ This is an unofficial fork of [mosh](https://mosh.org). It has **not** been secu
 
 **Port forwarding needs this build at both ends**: on your machine and on the server.
 
+New in 1.4.0-pf.4: **`mocp`**, which copies files like `scp` but through a mosh session, so a copy survives losing the network and carries on where it left off; `mocp --auto` then keeps a directory up to date. Also `mosh --stdio host -- command`, and forwarded TCP that is about twice as fast on long paths.
+
 New in 1.4.0-pf.3: when UDP cannot reach the server, the session is carried over ssh instead (`--relay`, on by default), and goes back to UDP when it can. A Windows server no longer needs to be told an address to listen on.
 
 ### Install

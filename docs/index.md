@@ -29,6 +29,8 @@ mosh maintainers and is not part of any mosh release. See
 | `-LU [bind:]port:host:hostport` | UDP datagrams sent to a port on **your machine**, to `host:hostport` as seen from the server | none |
 | `-RU [bind:]port:host:hostport` | UDP datagrams sent to a port on **the server**, to `host:hostport` as seen from your machine | none |
 | `-N` | No terminal: just hold the session and its forwards open | `ssh -N` |
+| `mocp` | Copies files to or from the server like `scp`, through a mosh session: a copy survives losing the network and carries on where it left off, and `--auto` keeps a directory up to date | `scp`, `rsync` |
+| `--stdio` | Runs a command on the server with its input and output on your machine, through the session | `ssh host command` |
 | `--relay=WHEN` | When UDP cannot reach the server at all, carry the session over ssh instead: `auto` (the default), `always` or `never` | none |
 | `--fragment-parity=MODE` | Whether large UDP datagrams get parity so they survive a lost fragment: `auto` (the default), `always` or `never` | none |
 

@@ -85,7 +85,8 @@ tar -xzf "$tmp/$name.tar.gz" -C "$tmp"
     || fail "the downloaded mosh-client does not run on this system; build from source: https://wmacevoy.github.io/mosh/usage.html"
 
 mkdir -p "$prefix/bin" "$prefix/share/man/man1"
-for f in mosh mosh-client mosh-server; do
+for f in mosh mocp mosh-client mosh-server; do
+    [ -f "$tmp/$name/bin/$f" ] || continue # (mocp came with 1.4.0-pf.4)
     # install over a running copy safely: replace the file, don't write into it
     cp "$tmp/$name/bin/$f" "$prefix/bin/.$f.new"
     chmod 755 "$prefix/bin/.$f.new"

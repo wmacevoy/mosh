@@ -63,6 +63,17 @@ cannot reach the server; see \fB\-\-relay\fP in
 .BR mosh (1).
 It exits when its input ends.
 
+The \fB\-X\fP \fIWORDS\fP option of \fBmosh\-server new\fP and of
+\fBmosh\-client\fP gives the session a stream between a process started
+at each end, as
+.BR mocp (1)
+and \fBmosh \-\-stdio\fP use.  \fIWORDS\fP says what the process at that
+end is, as words separated by the character with code 31: \fB@copy\fP
+and the arguments of one end of a file copy, \fB@sh\fP and a command
+for the login shell, or (client only) \fB@stdio\fP for the client's own
+standard input and output.  The server starts its process when the
+client opens the stream.
+
 .SH OPTIONS
 
 The argument "new" must be first on the command line to use

@@ -89,6 +89,17 @@ my $headless = 0;
 
 my $relay = 'auto';
 
+# Installed under the name mocp, this copies files: "mosh --copy".
+my $copy = ( $0 =~ m{(^|/)mocp$} ) ? 1 : 0;
+my ( $copy_recursive, $copy_auto, $copy_delete, $copy_quiet, $copy_interval );
+
+# A command at the server with its input and output here, and no terminal.
+my $stdio = 0;
+
+# What each end of the session's stream is, if it is to have one: the
+# words for the -X option of mosh-client and of mosh-server.
+my ( $stream_local, $stream_remote );
+
 my $use_remote_ip = 'proxy';
 
 my $family = 'prefer-inet';
@@ -167,6 +178,12 @@ qq{Usage: $0 [options] [--] [user@]host [command...]
                                 forwards given with it, open until
                                 interrupted (as "ssh -N" does)
 
+        --stdio              no terminal: run the command on the server
+                                with its input and output here, as
+                                "ssh host command" does
+
+        --copy               copy files: see "mocp --help"
+
         --relay={auto|always|never}
                              carry the session over ssh when UDP cannot
                                 reach the server: when needed (default),
@@ -193,6 +210,31 @@ This is mosh with experimental port forwarding (https://wmacevoy.github.io/mosh/
 Please report bugs in it at https://github.com/wmacevoy/mosh/issues,
 not to the mosh project.  Mosh home page: https://mosh.org\n};
 
+my $copy_usage =
+qq{Usage: mocp [options] SOURCE... DESTINATION
+
+Copies files to or from another machine through a mosh session, so that the
+copy survives losing the network, changing networks, and sleep, and carries
+on where it left off. Exactly one end is remote: [user@]host:path
+
+  mocp report.pdf server:docs/         to the server
+  mocp -r server:build/out .           from it, with what is inside
+  mocp --auto -r server:build/out .    and then keep ./out up to date
+
+-r                  directories, and everything in them
+        --auto      when the copy is done, stay, and copy again whatever
+                       changes at the source (until interrupted)
+        --delete    also remove from the destination what is no longer
+                       at the source (within the directories copied)
+        --interval=SECONDS
+                    how often --auto looks for changes (default: 2)
+-q                  say only what goes wrong
+
+A file is replaced only when the whole of it has arrived. Files that are
+already the same (by size and time) are not sent again. Options of mosh
+that concern the connection (--ssh, --relay, -p, --server, ...) work here.
+};
+
 my $version_message = '@PACKAGE_STRING@ [build @VERSION@]' . qq{
 Copyright 2012 Keith Winstein <mosh-devel\@mit.edu>
 License GPLv3+: GNU GPL version 3 or later <http://gnu.org/licenses/gpl.html>.
@@ -213,6 +255,14 @@ sub predict_check {
 
 # -n and -N are different options.
 Getopt::Long::Configure( 'no_ignore_case' );
+
+# With --stdio we stand where ssh would, for a program such as rsync that
+# runs "ssh [-l user] host command -with --options": what follows the
+# host is the command's, not ours.
+my $stdio_user;
+if ( grep { $_ eq '--stdio' } @ARGV ) {
+  Getopt::Long::Configure( 'require_order' );
+}
 
 GetOptions( 'client=s' => \$client,
 	    'server=s' => \$server,
@@ -239,12 +289,20 @@ GetOptions( 'client=s' => \$client,
 	    'tcp-remote-forward|R=s' => \@tcp_remote_forwards,
 	    'fragment-parity=s' => \$fragment_parity,
 	    'N' => \$headless,
+	    'copy' => \$copy,
+	    'r' => \$copy_recursive,
+	    'auto' => \$copy_auto,
+	    'delete' => \$copy_delete,
+	    'q' => \$copy_quiet,
+	    'interval=f' => \$copy_interval,
+	    'stdio' => \$stdio,
+	    'l=s' => \$stdio_user,
 	    'relay=s' => \$relay,
 	    'no-fragment-parity' => sub { $fragment_parity = 'never' },
-	    'experimental-remote-ip=s' => \$use_remote_ip) or die $usage;
+	    'experimental-remote-ip=s' => \$use_remote_ip) or die( $copy ? $copy_usage : $usage );
 
 if ( defined $help ) {
-    print $usage;
+    print( $copy ? $copy_usage : $usage );
     exit;
 }
 if ( defined $version ) {
@@ -318,6 +376,49 @@ delete $ENV{ 'MOSH_PREDICTION_DISPLAY' };
 my $userhost;
 my @command;
 my @bind_arguments;
+
+# Copying files: work out which end is which, and what each is to do.
+if ( $copy and not defined $fake_proxy ) {
+  die $copy_usage if scalar @ARGV < 2;
+  die "$0: --interval must be at least 0.1 (seconds).\n" if defined $copy_interval and $copy_interval < 0.1;
+  # [user@]host:path is remote.  A colon after a slash, or after a
+  # single letter (a Windows drive), is part of a local name.
+  my @places = map { m{^([^/:]{2,}):(.*)$}s ? [ $1, $2 ] : [ undef, $_ ] } @ARGV;
+  die "$0: a file name cannot contain the character with code 31.\n" if grep { $_->[1] =~ m{\x1f} } @places;
+  my $dest = pop @places;
+  my @flags = ( ( $copy_recursive ? '-r' : () ), ( $copy_auto ? '--auto' : () ),
+		( $copy_delete ? '--delete' : () ),
+		( defined $copy_interval ? '--interval=' . int( $copy_interval * 1000 ) : () ) );
+  my @here = ( @flags, ( $copy_quiet ? '-q' : () ) );
+  my $host;
+  if ( defined $dest->[0] ) {
+    die "$0: one end of a copy has to be this machine.\n" if grep { defined $_->[0] } @places;
+    $host = $dest->[0];
+    $stream_local = [ '@copy', 'send', @here, '--', map { $_->[1] } @places ];
+    $stream_remote = [ '@copy', 'receive', @flags, '--', ( length $dest->[1] ? $dest->[1] : '.' ) ];
+  } else {
+    $host = $places[0]->[0];
+    die "$0: one end of a copy has to be another machine: [user@]host:path\n" unless defined $host;
+    die "$0: the sources have to be on one machine.\n"
+      if grep { not defined $_->[0] or $_->[0] ne $host } @places;
+    die "$0: what is to be copied from $host?\n" if grep { not length $_->[1] } @places;
+    # (patterns are for the other end to expand, as a shell there would)
+    $stream_remote = [ '@copy', 'send', @flags, '--glob', '--', map { $_->[1] } @places ];
+    $stream_local = [ '@copy', 'receive', @here, '--', $dest->[1] ];
+  }
+  @ARGV = ( $host );
+  $headless = 1;
+} elsif ( $stdio and not defined $fake_proxy ) {
+  # (the command may be set off with "--", which with --stdio is still there)
+  splice( @ARGV, 1, 1 ) if scalar @ARGV > 1 and $ARGV[1] eq '--';
+  die "$0: --stdio needs a command to run on the server.\n\n$usage" if scalar @ARGV < 2;
+  $ARGV[0] = "$stdio_user\@$ARGV[0]" if defined $stdio_user and $ARGV[0] !~ m{\@};
+  # as ssh would: the words joined, for the shell at the other end
+  $stream_remote = [ '@sh', join( ' ', @ARGV[ 1 .. $#ARGV ] ) ];
+  $stream_local = [ '@stdio' ];
+  @ARGV = ( $ARGV[0] );
+  $headless = 1;
+}
 
 if ( ! defined $fake_proxy ) {
   if ( scalar @ARGV < 1 ) {
@@ -497,6 +598,10 @@ if ( $pid == 0 ) { # child
     push @server, ( '-F', $fragment_parity );
   }
 
+  if ( defined $stream_remote ) {
+    push @server, ( '-X', join( "\x1f", @$stream_remote ) );
+  }
+
   if ( scalar @command > 0 ) {
     push @server, '--', @command;
   }
@@ -545,7 +650,12 @@ if ( $pid == 0 ) { # child
       if ( defined $port_request and $port_request =~ m{:} and m{Bad UDP port} ) {
 	$bad_udp_port_warning = 1;
       }
-      print "$_\n";
+      # (what ssh or the login had to say; not on our output if that is carrying data)
+      if ( defined $stream_local ) {
+	print STDERR "$_\n" if length $_ and not m{^\s*$};
+      } else {
+	print "$_\n";
+      }
     }
   }
   close $pipe;
@@ -590,7 +700,8 @@ if ( $pid == 0 ) { # child
 		    ( map { ( '-L', $_ ) } @tcp_forwards ),
 		    ( map { ( '-R', $_ ) } @tcp_remote_forwards ),
 		    ( defined $fragment_parity ? ( '-F', $fragment_parity ) : () ),
-		    ( $headless ? ( '-N' ) : () ), $ip, $port);
+		    ( defined $stream_local ? ( '-X', join( "\x1f", @$stream_local ) )
+		      : $headless ? ( '-N' ) : () ), $ip, $port);
 }
 
 sub shell_quote { join ' ', map {(my $a = $_) =~ s/'/'\\''/g; "'$a'"} @_ }

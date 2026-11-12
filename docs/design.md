@@ -168,9 +168,20 @@ It implements the handshake in both roles, cumulative acknowledgment,
 reassembly of out-of-order segments, retransmission with an adaptive timeout
 (RFC 6298), fast retransmit and recovery (NewReno, RFC 6582), slow start and
 congestion avoidance, flow control with zero-window probes, independent
-half-close of each direction, and resets. It leaves out selective
-acknowledgment, window scaling and timestamps, which costs speed but not
+half-close of each direction, resets, and window scaling (RFC 7323). It
+leaves out selective acknowledgment and timestamps, which costs speed but not
 correctness.
+
+Window scaling lets up to a megabyte be on its way at once, where the plain
+TCP header allows 64 KB, which on a long path is the difference between using
+the path and idling on it. It is negotiated, so either end may be an older
+build without it. With that much in flight a burst can overrun the path and
+lose hundreds of segments at once, which NewReno repairs one per round trip.
+So when one repair uncovers a third hole, the adapter stops repairing: it
+goes back to the first hole and sends on from there, starting slowly, as it
+would after a timeout but without waiting for one. The other end says what it
+already has, and that is skipped. For a round trip afterwards, duplicate
+acknowledgments are not taken as loss, being echoes of the resending.
 
 ### Remote forwards
 
@@ -179,6 +190,52 @@ connects. It is implemented as a second pair of forwarders with the roles the
 other way round, using a different frame type so the two directions share the
 side channel without confusion. `-RU` is `-LU` reversed in exactly the same
 way.
+
+## Streams, and copying files
+
+A forward joins a socket at one end to a socket at the other. The same
+machinery can join two processes: instead of a listening port, the client has
+a socket already in hand (one end of a socket pair, the other end being a
+process it has started), and instead of an address to connect to, the server
+has a way of making a socket when asked (the same again). That is all a
+*stream* is: forward number 0 of its own frame type, with the built-in TCP in
+the middle, and so reliable, ordered, and kept through any loss of contact.
+The client opens it once the session is up. The session is told at each end
+what its process is (`-X`), and ends when the client's process does; the
+client exits with that process's status.
+
+`mosh --stdio` puts a small pump at the client end (its own standard input
+and output) and a command at the server end. `mocp` puts one end of a file
+copy at each.
+
+The copy is a conversation between a sender and a receiver, whichever way
+round they are:
+
+```
+sender                                receiver
+  LIST (names, sizes, times)  ---->
+                              <----   WANT (which, and from what offset)
+  FILE_BEGIN, DATA..., FILE_END ---->
+                              <----   RESULT
+```
+
+The receiver wants a file unless it has one of that name, size and time. If
+it holds part of the file from an earlier attempt it says how much, with a
+checksum of that much; the sender checks that against the start of its own
+file and, if they agree, sends only the rest. The whole file's checksum goes
+at the end, and only if it agrees is the part renamed into place. The
+checksum is 128 bits and not cryptographic: the session already authenticates
+every datagram, so it is there against a file changing between attempts, not
+against an adversary.
+
+With `--auto` the sender does not finish. It remembers what it has offered,
+looks again at intervals, and offers what differs (by size, time to the
+nanosecond where the file system has it, and mode). A file that changes while
+it is being read is abandoned and offered again next time.
+
+The receiver takes names from another machine and writes files, so it checks
+every one: relative, with no `..`, under the destination. It never creates
+links. A fuzzer feeds it arbitrary senders.
 
 ## The relay: when UDP is blocked
 
@@ -256,6 +313,8 @@ semantics for UDP, and TCP-over-TCP for TCP.
 | `tcpforward.{h,cc}` | TCP forwarder: framing and replay protection |
 | `tcpadapter.{h,cc}` | The socket adapter (built-in TCP) |
 | `relay.{h,cc}` | The two relays and the framing between them |
+| `streamchild.{h,cc}` | The process at each end of a stream |
+| `filecopy.{h,cc}` | `mocp`'s sender and receiver |
 | `forwarding.h` | Everything above behind one event-loop interface for the two programs |
 | `network.{h,cc}` | Loss measurement (added to the existing connection) |
 | `networktransport*.h`, `transportsender*.h` | Side-channel hooks and the two new optional message fields |

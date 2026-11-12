@@ -82,6 +82,13 @@ private:
   bool headless;
   bool announced;
 
+  /* a stream between a process here and one at the server (streamchild.h) */
+  std::vector<std::string> stream_words;
+  pid_t stream_pid;      /* 0 before it starts, -1 once it has finished */
+  int stream_status;     /* how it finished */
+  uint64_t stream_ended; /* when */
+  void tend_stream( void );
+
   /* Reaching the server through ssh when UDP will not get there (see src/network/relay.h). */
   enum RelayMode
   {
@@ -136,7 +143,8 @@ public:
       fragment_parity( s_fragment_parity ), forwarder(),
       connecting_notification(),
       repaint_requested( false ), lf_entered( false ), quit_sequence_started( false ), clean_shutdown( false ),
-      verbose( s_verbose ), headless( s_headless ), announced( false ),
+      verbose( s_verbose ), headless( s_headless ), announced( false ), stream_words(), stream_pid( 0 ),
+      stream_status( 1 ), stream_ended( 0 ),
       relay_mode( RELAY_NEVER ), relay_command(), relay_engaged( false ), relay_keep_alive( -1 ), started_at( 0 )
   {
     if ( predict_mode ) {
@@ -167,6 +175,11 @@ public:
    * remote relay (typically through ssh), and "mode" is "auto" to use
    * it when the server cannot be heard, or "always".
    */
+  /* The session is for a stream between this process and one the server starts.  (Needs headless.) */
+  void set_stream( const std::vector<std::string>& words ) { stream_words = words; }
+  /* How the process at this end of the stream finished, as an exit status; 1 if it never ran. */
+  int stream_exit_status( void ) const { return stream_pid == -1 ? stream_status : 1; }
+
   void set_relay( const std::string& mode, const std::vector<std::string>& command )
   {
     relay_command = command;

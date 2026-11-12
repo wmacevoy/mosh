@@ -25,9 +25,11 @@ of through ssh:
 
 import os
 import re
+import shutil
 import socket
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 
@@ -168,6 +170,37 @@ if relay and not windows:
         left = subprocess.run(["pgrep", "-f", pattern], capture_output=True, text=True).stdout.split()
         time.sleep(0.2)
     check("the relay goes when the client does", not left, "(%d left)" % len(left))
+
+
+def copy(to_server):
+    """A file copied through a session of its own, as mocp does it (see src/network/filecopy.h)."""
+    work = tempfile.mkdtemp(prefix="mosh-copy-")
+    there = work.replace("\\", "/")  # (the programs take either on Windows; the copy speaks of paths with /)
+    data = os.urandom(700000)
+    with open(os.path.join(work, "sent.bin"), "wb") as f:
+        f.write(data)
+    send = ["@copy", "send", "-q", "--", there + "/sent.bin"]
+    receive = ["@copy", "receive", "-q", "--", there + "/arrived.bin"]
+    begun = subprocess.run([server_path, "new", "-i", address, "-X", "\x1f".join(receive if to_server else send), "--"] + wait,
+                           env=env, stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=60)
+    found = re.search(r"MOSH CONNECT (\d+) (\S+)", begun.stdout)
+    if not found:
+        return False, repr((begun.stdout + begun.stderr)[-300:])
+    done = subprocess.run([client_path, "-X", "\x1f".join(send if to_server else receive), address, found.group(1)],
+                          env=dict(env, MOSH_KEY=found.group(2)), stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=90)
+    try:
+        with open(os.path.join(work, "arrived.bin"), "rb") as f:
+            same = f.read() == data
+    except OSError:
+        same = False
+    shutil.rmtree(work, ignore_errors=True)
+    return done.returncode == 0 and same, "" if done.returncode == 0 and same else "(exit %d) %s" % (done.returncode, done.stderr[-300:])
+
+
+if not relay:
+    check("a file is copied to the server", *copy(True))
+    check("a file is copied from the server", *copy(False))
+
 if windows:
     subprocess.run(["taskkill", "/F", "/IM", "mosh-server.exe"], capture_output=True)
 else:

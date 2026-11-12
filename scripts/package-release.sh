@@ -59,7 +59,7 @@ stage=$(mktemp -d 2>/dev/null || mktemp -d -t mosh-package)
 trap 'rm -rf "$stage"' EXIT
 mkdir -p "$stage/$name/bin" "$stage/$name/share/man/man1" "$out"
 
-cp scripts/mosh "$stage/$name/bin/"
+cp scripts/mosh scripts/mocp "$stage/$name/bin/"
 for program in mosh-client mosh-server; do
     cp "src/frontend/$program" "$stage/$name/bin/$program"
     if [ "$(uname -s)" = Darwin ]; then
@@ -71,7 +71,7 @@ for program in mosh-client mosh-server; do
     fi
 done
 chmod 755 "$stage/$name/bin/"*
-cp man/mosh.1 man/mosh-client.1 man/mosh-server.1 "$stage/$name/share/man/man1/"
+cp man/mosh.1 man/mocp.1 man/mosh-client.1 man/mosh-server.1 "$stage/$name/share/man/man1/"
 cp COPYING README.md "$stage/$name/"
 
 "$stage/$name/bin/mosh-client" --version | head -n 1

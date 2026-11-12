@@ -120,6 +120,33 @@ static uint32_t mss_option( const std::string& options )
   return AdapterPort::DEFAULT_MSS;
 }
 
+/* The window scale option: the shift asked for, or -1 if it was not. */
+static int scale_option( const std::string& options )
+{
+  for ( size_t i = 0; i < options.size(); ) {
+    const uint8_t kind = options[i];
+    if ( kind == 0 ) {
+      break;
+    }
+    if ( kind == 1 ) {
+      i++;
+      continue;
+    }
+    if ( i + 1 >= options.size() ) {
+      break;
+    }
+    const uint8_t len = options[i + 1];
+    if ( len < 2 || i + len > options.size() ) {
+      break;
+    }
+    if ( kind == 3 && len == 3 ) {
+      return std::min<int>( static_cast<uint8_t>( options[i + 2] ), 14 );
+    }
+    i += len;
+  }
+  return -1;
+}
+
 AdapterPort::AdapterPort( SegmentSink* s_sink, bool s_client )
   : sink( s_sink ), client( s_client ), listeners(), targets(), conns(), next_port( 32768 ), prng(),
     link_was_up( true )
@@ -194,6 +221,36 @@ void AdapterPort::add_target( uint8_t forward, const Addr& addr, socklen_t len )
   targets[forward].present = true;
 }
 
+void AdapterPort::add_spawner( uint8_t forward, const std::function<int()>& spawn )
+{
+  if ( targets.size() <= forward ) {
+    targets.resize( forward + 1 );
+  }
+  targets[forward].spawn = spawn;
+  targets[forward].present = true;
+}
+
+bool AdapterPort::open_with( uint8_t forward, int fd, uint64_t now )
+{
+  if ( !sink->segment_ready() || conns.size() >= MAX_CONNECTIONS ) {
+    close( fd );
+    return false;
+  }
+  prepare_socket( fd );
+
+  while ( find( forward, next_port ) ) {
+    next_port = next_port == 0xFFFF ? 32768 : next_port + 1;
+  }
+  Conn* c = new_conn( forward, next_port, fd );
+  next_port = next_port == 0xFFFF ? 32768 : next_port + 1;
+
+  c->state = SYN_SENT;
+  emit( *c, TCPInUDP::SYN, c->iss, "", true );
+  c->snd_nxt = c->snd_max = c->iss + 1;
+  c->rto_deadline = now + c->rto;
+  return true;
+}
+
 AdapterPort::Conn* AdapterPort::find( uint8_t forward, uint16_t port )
 {
   for ( std::list<Conn>::iterator i = conns.begin(); i != conns.end(); i++ ) {
@@ -247,24 +304,37 @@ uint32_t AdapterPort::agreed_mss( const std::string& their_options ) const
   return std::max( MIN_MSS, std::min( mss_option( their_options ), local_mss() ) );
 }
 
-uint16_t AdapterPort::window( const Conn& c ) const
+/* How much we can take, in bytes, as nearly as the header can say it. */
+uint32_t AdapterPort::window( const Conn& c ) const
 {
   const size_t space = c.recv_buf.size() < RECV_BUFFER ? RECV_BUFFER - c.recv_buf.size() : 0;
-  return std::min<size_t>( space, 0xFFFF );
+  return std::min<size_t>( space >> c.rcv_scale, 0xFFFF ) << c.rcv_scale;
 }
 
-void AdapterPort::emit( Conn& c, uint16_t flags, uint32_t seq, const std::string& payload, bool with_mss )
+void AdapterPort::emit( Conn& c, uint16_t flags, uint32_t seq, const std::string& payload, bool with_options )
 {
   TCPInUDP s;
   ( client ? s.source_port : s.dest_port ) = c.port;
   s.flags = flags;
   s.seq = seq;
   s.ack = ( flags & TCPInUDP::ACK ) ? c.rcv_nxt : 0;
-  s.window = c.last_window = window( c );
-  if ( with_mss ) {
+  if ( flags & TCPInUDP::SYN ) {
+    /* (the window in a SYN is never scaled: the other end does not know the scale until it has read it) */
+    c.last_window = std::min<uint32_t>( window( c ), 0xFFFF );
+    s.window = c.last_window;
+  } else {
+    c.last_window = window( c );
+    s.window = c.last_window >> c.rcv_scale;
+  }
+  if ( with_options ) {
     const uint32_t m = local_mss();
-    const char option[4] = { 2, 4, static_cast<char>( m >> 8 ), static_cast<char>( m & 0xFF ) };
-    s.options.assign( option, sizeof( option ) );
+    const char mss[4] = { 2, 4, static_cast<char>( m >> 8 ), static_cast<char>( m & 0xFF ) };
+    s.options.assign( mss, sizeof( mss ) );
+    /* The client asks for window scaling; the server agrees if it was asked. */
+    if ( client || c.rcv_scale ) {
+      const char scale[4] = { 1, 3, 3, static_cast<char>( WINDOW_SHIFT ) };
+      s.options.append( scale, sizeof( scale ) );
+    }
   }
   s.payload = payload;
   sink->to_network( c.forward, s );
@@ -351,19 +421,22 @@ void AdapterPort::passive_open( uint8_t forward, uint16_t port, const TCPInUDP& 
   }
   const Target& target = targets[forward];
 
-  int fd = socket( target.addr.sa.sa_family, SOCK_STREAM, 0 );
+  int fd = target.spawn ? target.spawn() : socket( target.addr.sa.sa_family, SOCK_STREAM, 0 );
   if ( fd < 0 ) {
     reply_reset( forward, port, syn );
     return;
   }
   prepare_socket( fd );
-  no_delay( fd );
 
-  if ( connect( fd, &target.addr.sa, target.len ) < 0 && errno != EINPROGRESS ) {
-    close( fd );
-    reply_reset( forward, port, syn );
-    return;
+  if ( !target.spawn ) {
+    no_delay( fd );
+    if ( connect( fd, &target.addr.sa, target.len ) < 0 && errno != EINPROGRESS ) {
+      close( fd );
+      reply_reset( forward, port, syn );
+      return;
+    }
   }
+  /* (a socket that came connected is found to be so on the next tick, like any other) */
 
   Conn* c = new_conn( forward, port, fd );
   c->state = CONNECTING;
@@ -371,6 +444,10 @@ void AdapterPort::passive_open( uint8_t forward, uint16_t port, const TCPInUDP& 
   c->rcv_nxt = syn.seq + 1;
   c->snd_wnd = syn.window;
   c->mss = agreed_mss( syn.options );
+  if ( scale_option( syn.options ) >= 0 ) {
+    c->snd_scale = scale_option( syn.options );
+    c->rcv_scale = WINDOW_SHIFT;
+  }
 }
 
 /* Server: our socket has reached the target, so accept the connection from the tunnel. */
@@ -419,6 +496,10 @@ void AdapterPort::from_network( uint8_t forward, const TCPInUDP& segment )
         c->rcv_nxt = segment.seq + 1;
         c->snd_wnd = segment.window;
         c->mss = agreed_mss( segment.options );
+        if ( scale_option( segment.options ) >= 0 ) {
+          c->snd_scale = scale_option( segment.options );
+          c->rcv_scale = WINDOW_SHIFT;
+        }
         c->cwnd = INITIAL_WINDOW_SEGMENTS * c->mss;
         c->rto_deadline = 0;
         c->retries = 0;
@@ -434,7 +515,7 @@ void AdapterPort::from_network( uint8_t forward, const TCPInUDP& segment )
       } else if ( segment.has( TCPInUDP::ACK ) && segment.ack == c->iss + 1 ) {
         c->state = ESTABLISHED;
         c->snd_una = c->iss + 1;
-        c->snd_wnd = segment.window;
+        c->snd_wnd = static_cast<uint32_t>( segment.window ) << c->snd_scale;
         c->cwnd = INITIAL_WINDOW_SEGMENTS * c->mss;
         c->rto_deadline = 0;
         c->retries = 0;
@@ -543,20 +624,27 @@ void AdapterPort::process_ack( Conn& c, const TCPInUDP& segment, uint64_t now )
   }
 
   const uint32_t flight = c.snd_max - c.snd_una;
+  const uint32_t their_window = static_cast<uint32_t>( segment.window ) << c.snd_scale;
 
   if ( ack == c.snd_una ) {
     /* Nothing new.  Three of these in a row, otherwise empty, mean a segment went missing. */
-    if ( flight && segment.payload.empty() && !segment.has( TCPInUDP::FIN ) && segment.window == c.snd_wnd ) {
-      if ( ++c.dupacks == 3 && !c.recovering ) {
+    if ( flight && segment.payload.empty() && !segment.has( TCPInUDP::FIN ) && their_window == c.snd_wnd ) {
+      /*
+       * (While resending, and for a round trip after, duplicates are of our
+       * own making: the other end already had some of what we sent again,
+       * and says so.  To take that for loss would be to slow down for nothing.)
+       */
+      if ( ++c.dupacks == 3 && !c.recovering && !c.resending && now >= c.calm_until ) {
         c.ssthresh = std::max( flight / 2, 2 * c.mss );
         c.cwnd = c.ssthresh;
         c.rtt_timing = false;
         c.recovering = true;
+        c.holes = 0;
         c.recover = c.snd_max;
         retransmit_one( c );
       }
     }
-    c.snd_wnd = segment.window;
+    c.snd_wnd = their_window;
     return;
   }
 
@@ -571,7 +659,7 @@ void AdapterPort::process_ack( Conn& c, const TCPInUDP& segment, uint64_t now )
   if ( seq_lt( c.snd_nxt, ack ) ) {
     c.snd_nxt = ack;
   }
-  c.snd_wnd = segment.window;
+  c.snd_wnd = their_window;
   c.dupacks = 0;
   c.retries = 0;
 
@@ -592,12 +680,31 @@ void AdapterPort::process_ack( Conn& c, const TCPInUDP& segment, uint64_t now )
 
   if ( c.recovering ) {
     if ( seq_lt( ack, c.recover ) ) {
-      /* That filled one hole and revealed another.  Fill it too, without waiting to be asked three times. */
-      retransmit_one( c );
+      if ( ++c.holes < MANY_HOLES ) {
+        /* That filled one hole and revealed another.  Fill it too, without waiting to be asked three times. */
+        retransmit_one( c );
+        c.rto_deadline = now + c.rto;
+        return;
+      }
+      /*
+       * And another, and another: a great deal was lost, and one hole per
+       * round trip would take all day.  Send on from here instead, gently,
+       * as after a timeout but without waiting for one.  What the other end
+       * already has of it, it will say, and that is skipped.
+       */
+      c.cwnd = 2 * c.mss;
+      c.snd_nxt = c.snd_una;
+      c.fin_sent = c.fin_acked;
+      c.recovering = false;
+      c.resending = true;
       c.rto_deadline = now + c.rto;
       return;
     }
     c.recovering = false;
+  }
+  if ( c.resending && !seq_lt( ack, c.recover ) ) {
+    c.resending = false;
+    c.calm_until = now + c.rto;
   }
 
   /* slow start, then congestion avoidance */
@@ -725,6 +832,8 @@ void AdapterPort::timeout( Conn& c, uint64_t now )
   c.fin_sent = c.fin_acked;
   c.dupacks = 0;
   c.recovering = false;
+  c.resending = true;
+  c.recover = c.snd_max;
   c.rtt_timing = false;
   c.rto_deadline = 0;
   output( c, now );

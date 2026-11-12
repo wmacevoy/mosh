@@ -38,6 +38,7 @@
 #include <unistd.h>
 
 #include "src/crypto/crypto.h"
+#include "src/network/streamchild.h"
 #include "src/util/fatal_assert.h"
 #include "src/util/locale_utils.h"
 #include "stmclient.h"
@@ -112,6 +113,7 @@ int main( int argc, char* argv[] )
   std::vector<std::string> udp_forwards, udp_remote_forwards, tcp_forwards, tcp_remote_forwards;
   std::string fragment_parity = "auto";
   bool headless = false;
+  std::vector<std::string> stream;
   /* For security, make sure we don't dump core */
   Crypto::disable_dumping_core();
 
@@ -131,7 +133,7 @@ int main( int argc, char* argv[] )
   }
 
   int opt;
-  while ( ( opt = getopt( argc, argv, "#:cvL:R:F:N" ) ) != -1 ) {
+  while ( ( opt = getopt( argc, argv, "#:cvL:R:F:NX:" ) ) != -1 ) {
     switch ( opt ) {
       case '#':
         // Ignore the original arguments to mosh wrapper
@@ -172,6 +174,19 @@ int main( int argc, char* argv[] )
         break;
       case 'N':
         /* no terminal: hold the session and its forwards open until told to stop, like "ssh -N" */
+        headless = true;
+        break;
+      case 'X':
+        /*
+         * No terminal either: the session is for a stream between a
+         * process started here and one the server starts, and lasts as
+         * long as ours does.  See src/network/streamchild.h.
+         */
+        stream = Network::stream_words( optarg );
+        if ( !Network::stream_words_valid( stream ) ) {
+          fprintf( stderr, "%s: -X: not something that can be started\n", argv[0] );
+          exit( 1 );
+        }
         headless = true;
         break;
       default:
@@ -245,6 +260,7 @@ int main( int argc, char* argv[] )
   set_native_locale();
 
   bool success = false;
+  int stream_exit = 1;
   try {
     STMClient client( ip,
                       desired_port,
@@ -261,10 +277,12 @@ int main( int argc, char* argv[] )
     if ( relay_mode != "never" ) {
       client.set_relay( relay_mode, relay_command );
     }
+    client.set_stream( stream );
     client.init();
 
     try {
       success = client.main();
+      stream_exit = client.stream_exit_status();
     } catch ( ... ) {
       client.shutdown();
       throw;
@@ -280,6 +298,14 @@ int main( int argc, char* argv[] )
   } catch ( const std::exception& e ) {
     fprintf( stderr, "Error: %s\r\n", e.what() );
     success = false;
+  }
+
+  if ( !stream.empty() ) {
+    /* We were only the means.  What matters is how the process the stream was for got on. */
+    if ( stream_exit == 1 && !success ) {
+      fputs( "mosh: the session ended before its work was done.\n", stderr );
+    }
+    return stream_exit;
   }
 
   if ( headless ) {

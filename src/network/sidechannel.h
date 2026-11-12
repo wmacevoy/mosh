@@ -64,6 +64,7 @@ const uint64_t SIDECHANNEL_QUIET = 10000;
 
 /* Bits for Instruction.capabilities */
 const uint32_t CAPABILITY_SIDECHANNEL = 1;
+const uint32_t CAPABILITY_STREAM = 2; /* a stream between a process at each end (1.4.0-pf.4) */
 
 /* Receives side-channel payloads (including the leading magic byte). */
 class SideChannelSink
