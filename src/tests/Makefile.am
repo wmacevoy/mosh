@@ -39,8 +39,8 @@ displaytests = \
 	unicode-later-combining.test \
 	window-resize.test
 
-check_PROGRAMS = ocb-aes encrypt-decrypt base64 nonce-incr udp-forward inpty is-utf8-locale
-TESTS = ocb-aes encrypt-decrypt base64 nonce-incr udp-forward local.test $(displaytests)
+check_PROGRAMS = ocb-aes encrypt-decrypt base64 nonce-incr udp-forward tcp-in-udp inpty is-utf8-locale
+TESTS = ocb-aes encrypt-decrypt base64 nonce-incr udp-forward tcp-in-udp local.test $(displaytests)
 XFAIL_TESTS = \
 	e2e-failure.test \
 	emulation-attributes-256color8.test
@@ -68,6 +68,10 @@ nonce_incr_LDADD = ../network/libmoshnetwork.a ../crypto/libmoshcrypto.a ../util
 udp_forward_SOURCES = udp-forward.cc
 udp_forward_CPPFLAGS = $(nonce_incr_CPPFLAGS)
 udp_forward_LDADD = $(nonce_incr_LDADD)
+
+tcp_in_udp_SOURCES = tcp-in-udp.cc
+tcp_in_udp_CPPFLAGS = $(nonce_incr_CPPFLAGS)
+tcp_in_udp_LDADD = $(nonce_incr_LDADD)
 
 inpty_SOURCES = inpty.cc
 inpty_CPPFLAGS = -I$(srcdir)/../util
