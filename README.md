@@ -33,8 +33,12 @@ It aims to support the typical interactive uses of SSH, plus:
      underlines its predictions while they are outstanding and removes
      the underline when they are confirmed by the server.
 
-Mosh does not support X forwarding or the non-interactive uses of SSH,
-including port forwarding.
+Mosh does not support X forwarding or the non-interactive uses of SSH.
+
+This branch adds experimental port forwarding (`-L` and `-R` for TCP as
+in SSH, and `-U` for UDP), carried inside the mosh session so that it
+roams as the terminal does.  It needs this build at both ends.  See
+https://wmacevoy.github.io/mosh/ or the `docs` directory.
 
 Other features
 --------------
