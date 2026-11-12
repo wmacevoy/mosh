@@ -78,8 +78,6 @@ my @tcp_forwards = ();
 
 my @tcp_remote_forwards = ();
 
-my $tcp_tun = 0;
-
 my $fragment_parity = undef;
 
 my $use_remote_ip = 'proxy';
@@ -155,9 +153,6 @@ qq{Usage: $0 [options] [--] [user@]host [command...]
                                 server to HOST:HOSTPORT as seen from here,
                                 as "ssh -R" does
                                 (may be repeated; needs support on the server)
-        --tcp-tun            use a TUN device for TCP forwarding where
-                                possible (needs CAP_NET_ADMIN; connect to
-                                10.111.0.2:PORT instead)
 
         --ssh=COMMAND        ssh command to run when setting up session
                                 (example: "ssh -p 2222")
@@ -220,7 +215,6 @@ GetOptions( 'client=s' => \$client,
 	    'udp-remote-forward|RU=s' => \@udp_remote_forwards,
 	    'tcp-forward|L=s' => \@tcp_forwards,
 	    'tcp-remote-forward|R=s' => \@tcp_remote_forwards,
-	    'tcp-tun!' => \$tcp_tun,
 	    'fragment-parity=s' => \$fragment_parity,
 	    'no-fragment-parity' => sub { $fragment_parity = 'never' },
 	    'experimental-remote-ip=s' => \$use_remote_ip) or die $usage;
@@ -462,10 +456,6 @@ if ( $pid == 0 ) { # child
     push @server, ( '-R', $_ );
   }
 
-  if ( $tcp_tun ) {
-    push @server, '-w';
-  }
-
   if ( defined $fragment_parity ) {
     push @server, ( '-F', $fragment_parity );
   }
@@ -547,7 +537,7 @@ if ( $pid == 0 ) { # child
   exec {$client} ("$client", "-# @cmdline |", ( map { ( '-LU', $_ ) } @udp_forwards ),
 		    ( map { ( '-RU', $_ ) } @udp_remote_forwards ),
 		    ( map { ( '-L', $_ ) } @tcp_forwards ),
-		    ( map { ( '-R', $_ ) } @tcp_remote_forwards ), ( $tcp_tun ? ( '-w' ) : () ),
+		    ( map { ( '-R', $_ ) } @tcp_remote_forwards ),
 		    ( defined $fragment_parity ? ( '-F', $fragment_parity ) : () ), $ip, $port);
 }
 

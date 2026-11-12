@@ -43,9 +43,9 @@
 #include "src/network/tcpforward.h"
 
 /*
- * The socket adapter: a SegmentPort for when there is no TUN device.
+ * The socket adapter: a SegmentPort made of ordinary sockets.
  *
- * Without a TUN device the kernel will not give us TCP segments, only
+ * The kernel will not give an unprivileged program TCP segments, only
  * byte streams.  So this is a TCP endpoint of our own, just enough of
  * one to be a correct peer for a real TCP (or for another adapter) at
  * the far end of the tunnel, joined back to back with an ordinary

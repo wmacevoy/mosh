@@ -52,17 +52,10 @@
  * retransmit or reorder them: the two TCP endpoints do, so there is one
  * layer of reliability, not two stacked.
  *
- * Each end turns connections into segments and back with a
- * SegmentPort, of which there are two kinds:
- *
- *  - TunPort (tuntcp.h) hands segments to the kernel's TCP through a
- *    TUN device.  It needs CAP_NET_ADMIN and is only used on request.
- *
- *  - AdapterPort (tcpadapter.h) is a small TCP of our own that bridges
- *    to ordinary sockets.  It needs no privileges and is what is used
- *    whenever a TUN device is not asked for or cannot be had.
- *
- * The two ends choose independently, and any pairing works.
+ * Each end turns connections into segments and back with an
+ * AdapterPort (tcpadapter.h): a small TCP of our own, bridged to
+ * ordinary sockets, since the kernel will not give an unprivileged
+ * program TCP segments, only byte streams.
  *
  * One end of a forward listens for applications to connect, and the
  * other connects to the forward's target.  For a local forward (-L) the
@@ -114,7 +107,6 @@ public:
 };
 
 class AdapterPort;
-class TunPort;
 
 class TCPForwarder : public SideChannelSink, public SegmentSink
 {
@@ -123,12 +115,6 @@ public:
   {
     LISTEN, /* applications on this machine connect to us */
     CONNECT /* we connect to the targets */
-  };
-
-  enum Device
-  {
-    ADAPTER, /* ordinary sockets */
-    TUN      /* a TUN device where possible, otherwise ordinary sockets */
   };
 
   static constexpr size_t MAX_FORWARDS = 16;
@@ -140,9 +126,7 @@ private:
   unsigned int verbose;
 
   std::unique_ptr<AdapterPort> adapter;
-  std::unique_ptr<TunPort> tun;
-  std::vector<SegmentPort*> port_of; /* by forward index; points at one of the above */
-  std::vector<std::string> notes;
+  size_t forwards; /* how many there are */
 
   uint64_t next_seq;
   ReplayWindow replay;
@@ -161,14 +145,10 @@ public:
   TCPForwarder( SideChannelLink* s_link,
                 Role s_role,
                 const std::vector<std::string>& specs,
-                Device device,
                 uint8_t s_frame_type = UDPForwarder::TYPE_TCP_SEGMENT );
   ~TCPForwarder();
 
   void set_verbose( unsigned int s_verbose ) { verbose = s_verbose; }
-
-  /* How each forward ended up being provided, one line each, for the user. */
-  const std::vector<std::string>& get_notes( void ) const { return notes; }
 
   std::vector<int> fds( void ) const;
   void read_fd( int fd );

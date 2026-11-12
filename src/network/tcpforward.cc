@@ -43,35 +43,15 @@
 
 #include "src/network/tcpadapter.h"
 #include "src/network/tcpforward.h"
-#include "src/network/tuntcp.h"
 #include "src/util/timestamp.h"
 
 using namespace Network;
 
-/* Is this an address of the machine we are running on? */
-static bool is_local_address( const Addr& addr, socklen_t len )
-{
-  int fd = socket( addr.sa.sa_family, SOCK_DGRAM, 0 );
-  if ( fd < 0 ) {
-    return false;
-  }
-  Addr any_port = addr;
-  if ( addr.sa.sa_family == AF_INET ) {
-    any_port.sin.sin_port = 0;
-  } else {
-    any_port.sin6.sin6_port = 0;
-  }
-  const bool ret = bind( fd, &any_port.sa, len ) == 0;
-  close( fd );
-  return ret;
-}
-
 TCPForwarder::TCPForwarder( SideChannelLink* s_link,
                             Role s_role,
                             const std::vector<std::string>& specs,
-                            Device device,
                             uint8_t s_frame_type )
-  : link( s_link ), role( s_role ), frame_type( s_frame_type ), verbose( 0 ), adapter(), tun(), port_of(), notes(),
+  : link( s_link ), role( s_role ), frame_type( s_frame_type ), verbose( 0 ), adapter(), forwards( 0 ),
     next_seq( 0 ), replay(), dropped_oversize( 0 )
 {
   if ( specs.size() > MAX_FORWARDS ) {
@@ -80,16 +60,13 @@ TCPForwarder::TCPForwarder( SideChannelLink* s_link,
 
   adapter.reset( new AdapterPort( this, role == LISTEN ) );
 
-  bool tun_failed = false;
-
   for ( size_t i = 0; i < specs.size(); i++ ) {
     const ForwardSpec spec( specs[i] );
 
-    /* the connecting end needs to know where to connect */
-    Addr target;
-    socklen_t target_len = 0;
-    memset( &target, 0, sizeof( target ) );
-    if ( role == CONNECT ) {
+    if ( role == LISTEN ) {
+      adapter->add_listener( i, spec );
+    } else {
+      /* the connecting end needs to know where to connect */
       struct addrinfo hints, *res = NULL;
       memset( &hints, 0, sizeof( hints ) );
       hints.ai_family = AF_UNSPEC;
@@ -101,55 +78,15 @@ TCPForwarder::TCPForwarder( SideChannelLink* s_link,
                                   + gai_strerror( errcode ),
                                 0 );
       }
-      target_len = res->ai_addrlen;
+      Addr target;
+      memset( &target, 0, sizeof( target ) );
+      const socklen_t target_len = res->ai_addrlen;
       memcpy( &target, res->ai_addr, target_len );
       freeaddrinfo( res );
-    }
 
-    /*
-     * A TUN device makes the kernel on this machine the TCP endpoint.
-     * At the listening end that is always possible.  At the connecting
-     * end it only reaches targets that are this machine itself (and
-     * only over IPv4); anywhere else would need this machine to route
-     * and translate addresses, which is the administrator's business,
-     * not ours.
-     */
-    bool want_tun = device == TUN && !tun_failed;
-    if ( want_tun && role == CONNECT
-         && !( target.sa.sa_family == AF_INET && is_local_address( target, target_len ) ) ) {
-      want_tun = false;
-      notes.push_back( "TCP " + specs[i] + ": not an IPv4 address of this machine itself; using sockets" );
-    }
-
-    if ( want_tun && !tun ) {
-      try {
-        tun.reset( new TunPort( this, role == LISTEN ) );
-      } catch ( const NetworkException& e ) {
-        tun_failed = true;
-        want_tun = false;
-        notes.push_back( std::string( "No TUN device (" ) + e.what() + "); using sockets" );
-      }
-    }
-
-    if ( want_tun ) {
-      try {
-        const std::string where = ( role == LISTEN ) ? tun->add_listener( i, spec ) : tun->add_target( i, target );
-        notes.push_back( "TCP " + specs[i] + ": " + tun->name()
-                         + ( role == LISTEN ? ", connect to " + where : "" ) );
-        port_of.push_back( tun.get() );
-        continue;
-      } catch ( const NetworkException& e ) {
-        notes.push_back( "TCP " + specs[i] + ": " + e.what() + "; using sockets" );
-      }
-    }
-
-    if ( role == LISTEN ) {
-      const std::string where = adapter->add_listener( i, spec );
-      notes.push_back( "TCP " + specs[i] + ": listening on " + where );
-    } else {
       adapter->add_target( i, target, target_len );
     }
-    port_of.push_back( adapter.get() );
+    forwards++;
   }
 }
 
@@ -157,40 +94,22 @@ TCPForwarder::~TCPForwarder() {}
 
 std::vector<int> TCPForwarder::fds( void ) const
 {
-  std::vector<int> ret = adapter->fds();
-  if ( tun ) {
-    const std::vector<int> more = tun->fds();
-    ret.insert( ret.end(), more.begin(), more.end() );
-  }
-  return ret;
+  return adapter->fds();
 }
 
 void TCPForwarder::read_fd( int fd )
 {
-  /* each port ignores descriptors that aren't its own */
-  adapter->read_fd( fd );
-  if ( tun ) {
-    tun->read_fd( fd );
-  }
+  adapter->read_fd( fd ); /* which ignores descriptors that aren't its own */
 }
 
 void TCPForwarder::tick( void )
 {
-  const uint64_t now = timestamp();
-  adapter->tick( now );
-  if ( tun ) {
-    tun->tick( now );
-  }
+  adapter->tick( timestamp() );
 }
 
 int TCPForwarder::wait_time( void ) const
 {
-  const uint64_t now = timestamp();
-  int ret = adapter->wait_time( now );
-  if ( tun ) {
-    ret = std::min( ret, tun->wait_time( now ) );
-  }
-  return ret;
+  return adapter->wait_time( timestamp() );
 }
 
 size_t TCPForwarder::max_datagram( void ) const
@@ -207,7 +126,7 @@ void TCPForwarder::to_network( uint8_t forward, const TCPInUDP& segment )
 
   const std::string datagram = segment.to_datagram();
   if ( datagram.size() > max_datagram() ) {
-    /* The ports hold the endpoints to a suitable MSS, so this is not expected. */
+    /* The adapter keeps its segments small enough, so this is not expected. */
     if ( verbose && !dropped_oversize ) {
       fprintf( stderr,
                "TCP forwarding: dropping oversize segment (%d bytes)\n",
@@ -230,7 +149,7 @@ void TCPForwarder::sidechannel_recv( const std::string& payload )
   std::string datagram;
 
   if ( !UDPForwarder::decode_frame( payload, type, forward, listener_port, seq, datagram ) || type != frame_type
-       || forward >= port_of.size() ) {
+       || forward >= forwards ) {
     return;
   }
 
@@ -246,5 +165,5 @@ void TCPForwarder::sidechannel_recv( const std::string& payload )
     return;
   }
 
-  port_of[forward]->from_network( forward, segment );
+  adapter->from_network( forward, segment );
 }

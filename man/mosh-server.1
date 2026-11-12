@@ -29,7 +29,6 @@ new
 [\-R \fR[\fP\fIBIND\fP:\fR]\fP\fIPORT\fP:\fIHOST\fP:\fIHOSTPORT\fP]
 [\-LU \fR[\fP\fIBIND\fP:\fR]\fP\fIPORT\fP:\fIHOST\fP:\fIHOSTPORT\fP]
 [\-RU \fR[\fP\fIBIND\fP:\fR]\fP\fIPORT\fP:\fIHOST\fP:\fIHOSTPORT\fP]
-[\-w]
 [\-F auto|always|never]
 [\-\- command...]
 .br
@@ -120,13 +119,6 @@ Experimental.  Listen for UDP datagrams on \fIBIND_ADDRESS\fP:\fIPORT\fP
 (by default, on 127.0.0.1) and forward them to the client, which
 re-sends them to \fIHOST\fP:\fIHOSTPORT\fP (see \fB\-RU\fP in
 .BR mosh (1)).
-
-.TP
-.B \-w
-Experimental.  Use a TUN device for \fB\-L\fP where possible (see
-\fB\-\-tcp\-tun\fP in
-.BR mosh (1)).
-With \fB\-v\fP, the server reports how each forward is provided.
 
 .TP
 .B \-F \fIMODE\fP

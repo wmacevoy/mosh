@@ -117,7 +117,6 @@ static int run_server( const char* desired_ip,
                        const std::vector<std::string>& tcp_forwards,
                        const std::vector<std::string>& tcp_remote_forwards,
                        const std::vector<std::string>& udp_remote_forwards,
-                       bool tcp_tun,
                        const std::string& fragment_parity );
 
 static void print_version( FILE* file )
@@ -134,9 +133,7 @@ static void print_usage( FILE* stream, const char* argv0 )
 {
   fprintf( stream,
            "Usage: %s new [-s] [-v] [-i LOCALADDR] [-p PORT[:PORT2]] [-c COLORS] [-l NAME=VALUE]\n"
-           "       [-L|-R|-LU|-RU [BIND:]PORT:HOST:HOSTPORT]\n"
-           "       [-w]\n"
-           "       [-F auto|always|never]\n"
+           "       [-L|-R|-LU|-RU [BIND:]PORT:HOST:HOSTPORT] [-F auto|always|never]\n"
            "       [-- COMMAND...]\n",
            argv0 );
 }
@@ -205,7 +202,6 @@ int main( int argc, char* argv[] )
   /* Will cause mosh-server not to correctly detach on old versions of sshd. */
   std::list<std::string> locale_vars;
   std::vector<std::string> udp_forwards, udp_remote_forwards, tcp_forwards, tcp_remote_forwards;
-  bool tcp_tun = false;
   std::string fragment_parity = "auto";
 
   /* strip off command */
@@ -231,7 +227,7 @@ int main( int argc, char* argv[] )
   if ( ( argc >= 2 ) && ( strcmp( argv[1], "new" ) == 0 ) ) {
     /* new option syntax */
     int opt;
-    while ( ( opt = getopt( argc - 1, argv + 1, "@:i:p:c:svl:L:R:wF:" ) ) != -1 ) {
+    while ( ( opt = getopt( argc - 1, argv + 1, "@:i:p:c:svl:L:R:F:" ) ) != -1 ) {
       switch ( opt ) {
           /*
            * This undocumented option does nothing but eat its argument.
@@ -295,10 +291,6 @@ int main( int argc, char* argv[] )
           }
           break;
         }
-        case 'w':
-          /* use a TUN device for TCP forwarding where possible */
-          tcp_tun = true;
-          break;
         case 'F':
           /* when to protect fragmented UDP datagrams with parity */
           fragment_parity = optarg;
@@ -429,7 +421,6 @@ int main( int argc, char* argv[] )
                        tcp_forwards,
                        tcp_remote_forwards,
                        udp_remote_forwards,
-                       tcp_tun,
                        fragment_parity );
   } catch ( const Network::NetworkException& e ) {
     fprintf( stderr, "Network exception: %s\n", e.what() );
@@ -451,7 +442,6 @@ static int run_server( const char* desired_ip,
                        const std::vector<std::string>& tcp_forwards,
                        const std::vector<std::string>& tcp_remote_forwards,
                        const std::vector<std::string>& udp_remote_forwards,
-                       bool tcp_tun,
                        const std::string& fragment_parity )
 {
   /* get network idle timeout */
@@ -508,19 +498,13 @@ static int run_server( const char* desired_ip,
   if ( !udp_forwards.empty() || !tcp_forwards.empty() || !tcp_remote_forwards.empty()
        || !udp_remote_forwards.empty() ) {
     forwarder.reset( new Network::Forwarding(
-      network.get(), false, udp_forwards, tcp_forwards, tcp_tun, tcp_remote_forwards, udp_remote_forwards ) );
+      network.get(), false, udp_forwards, tcp_forwards, tcp_remote_forwards, udp_remote_forwards ) );
     forwarder->set_verbose( verbose );
     if ( !forwarder->set_fragment_parity( fragment_parity ) ) {
       throw NetworkException(
         "Bad fragment parity mode (" + fragment_parity + "): expected auto, always or never", 0 );
     }
     network->set_sidechannel_sink( forwarder->sink() );
-    if ( verbose ) {
-      const std::vector<std::string> notes = forwarder->notes();
-      for ( std::vector<std::string>::const_iterator it = notes.begin(); it != notes.end(); it++ ) {
-        fprintf( stderr, "%s\n", it->c_str() );
-      }
-    }
   }
 
   /*

@@ -70,11 +70,8 @@ private:
   Terminal::Display display;
 
   std::vector<std::string> udp_forwards, udp_remote_forwards, tcp_forwards, tcp_remote_forwards;
-  bool tcp_tun;
   std::string fragment_parity;
   std::unique_ptr<Network::Forwarding> forwarder;
-  std::wstring forward_notice;
-  uint64_t forward_notice_until;
 
   std::wstring connecting_notification;
   bool repaint_requested, lf_entered, quit_sequence_started;
@@ -105,7 +102,6 @@ public:
              const char* predict_overwrite,
              const std::vector<std::string>& s_udp_forwards = std::vector<std::string>(),
              const std::vector<std::string>& s_tcp_forwards = std::vector<std::string>(),
-             bool s_tcp_tun = false,
              const std::string& s_fragment_parity = "auto",
              const std::vector<std::string>& s_tcp_remote_forwards = std::vector<std::string>(),
              const std::vector<std::string>& s_udp_remote_forwards = std::vector<std::string>() )
@@ -115,9 +111,9 @@ public:
       network(), display( true ) /* use TERM environment var to initialize display */,
       udp_forwards( s_udp_forwards ), udp_remote_forwards( s_udp_remote_forwards ),
       tcp_forwards( s_tcp_forwards ),
-      tcp_remote_forwards( s_tcp_remote_forwards ), tcp_tun( s_tcp_tun ),
+      tcp_remote_forwards( s_tcp_remote_forwards ),
       fragment_parity( s_fragment_parity ), forwarder(),
-      forward_notice(), forward_notice_until( 0 ), connecting_notification(),
+      connecting_notification(),
       repaint_requested( false ), lf_entered( false ), quit_sequence_started( false ), clean_shutdown( false ),
       verbose( s_verbose )
   {

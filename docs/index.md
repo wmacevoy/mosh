@@ -28,7 +28,6 @@ mosh maintainers and is not part of any mosh release. See
 | `-R [bind:]port:host:hostport` | TCP connections made to a port on **the server**, to `host:hostport` as seen from your machine | `ssh -R` |
 | `-LU [bind:]port:host:hostport` | UDP datagrams sent to a port on **your machine**, to `host:hostport` as seen from the server | none |
 | `-RU [bind:]port:host:hostport` | UDP datagrams sent to a port on **the server**, to `host:hostport` as seen from your machine | none |
-| `--tcp-tun` | Use a TUN network device for `-L`, so the operating system's own TCP carries the connection | `ssh -w` (loosely) |
 | `--fragment-parity=MODE` | Whether large UDP datagrams get parity so they survive a lost fragment: `auto` (the default), `always` or `never` | none |
 
 ## Why
@@ -58,7 +57,7 @@ It also makes UDP forwarding possible at all, which ssh does not offer.
 - This build of mosh on **both** ends. If the server is an older mosh,
   the terminal works as usual and forwards simply do nothing (connections are
   refused).
-- Nothing else for normal use. Only `--tcp-tun` needs extra privileges.
+- Nothing else: no extra privileges, ports or configuration.
 
 ## Where to go next
 

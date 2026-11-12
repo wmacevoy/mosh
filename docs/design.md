@@ -143,15 +143,11 @@ the listening end travels in the frame header as the conversation number, and
 the port at the connecting end is implied by the forward. The urgent pointer
 has no place in this form, so urgent data is not carried.
 
-### Two ways to be a TCP endpoint
+### The socket adapter
 
-Each end turns connections into segments and back in one of two ways. The two
-ends choose independently and any pairing works.
-
-**The socket adapter (the default).** Without special privileges the kernel
-will not hand a program TCP segments, only byte streams. So mosh contains a
-small TCP implementation of its own, joined back to back with an ordinary
-socket:
+Without special privileges the kernel will not hand a program TCP segments,
+only byte streams. So mosh contains a small TCP implementation of its own,
+joined back to back with an ordinary socket:
 
 ```
 application <-- kernel TCP --> socket | adapter <== segments ==> other end
@@ -169,20 +165,6 @@ congestion avoidance, flow control with zero-window probes, independent
 half-close of each direction, and resets. It leaves out selective
 acknowledgment, window scaling and timestamps, which costs speed but not
 correctness.
-
-**A TUN device (`--tcp-tun`).** Mosh creates a network interface with a small
-private subnet. The kernel routes that subnet to the interface, where its
-packets come to mosh; packets mosh writes appear to arrive from it. The
-kernel's own TCP is then the endpoint, and mosh is only a relay.
-
-- On the client (subnet `10.111.0.0/24`), applications connect to
-  `10.111.0.2:port`.
-- On the server (subnet `10.112.0.0/24`), segments are delivered to the
-  forward's target, which must be an IPv4 address of the server itself.
-  Reaching anything else would need the server to route and translate
-  addresses, which is left to its administrator.
-- The interface's MTU is set so that the kernel never produces a segment too
-  large to forward.
 
 ### Remote forwards
 
@@ -217,9 +199,8 @@ semantics for UDP, and TCP-over-TCP for TCP.
 | `sidechannel.h` | The side channel's interfaces and the type multiplexer |
 | `udpforward.{h,cc}` | Frame format, replay window, UDP forwarder, fragmentation and parity |
 | `tcpinudp.{h,cc}` | The TCP-in-UDP header transformation and checksums |
-| `tcpforward.{h,cc}` | TCP forwarder: choosing a back end, framing |
+| `tcpforward.{h,cc}` | TCP forwarder: framing and replay protection |
 | `tcpadapter.{h,cc}` | The socket adapter (built-in TCP) |
-| `tuntcp.{h,cc}` | The TUN device back end |
 | `forwarding.h` | Everything above behind one event-loop interface for the two programs |
 | `network.{h,cc}` | Loss measurement (added to the existing connection) |
 | `networktransport*.h`, `transportsender*.h` | Side-channel hooks and the two new optional message fields |

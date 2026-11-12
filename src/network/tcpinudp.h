@@ -63,11 +63,14 @@
  * i.e. in socket addresses, and are rewritten by the forwarder exactly
  * as a NAT would rewrite them.
  *
- * Nothing here captures or injects TCP segments; that takes the kernel
- * translator named above (or, some day, a TUN device) at the two ends.
+ * mosh's own TCP endpoints (tcpadapter.h) read and write the datagram
+ * form directly.  The other two forms, and the checksums, are for
+ * exchanging segments with a real TCP stack: for instance the kernel
+ * translator named above run at one end, which nothing in mosh does.
+ *
  * Because forwarded datagrams are never retransmitted by mosh, the TCP
  * endpoints see an ordinary lossy path and there is only one layer of
- * retransmission.  Since nothing is fragmented either, the endpoints
+ * retransmission.  Since segments are not fragmented, the endpoints
  * must be held to a small enough MSS (see max_segment_size()).
  */
 

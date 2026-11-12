@@ -134,28 +134,6 @@ in the group can be rebuilt.
 You should not normally need to set this. In `auto` it can take a few seconds
 after the network gets worse for parity to switch on.
 
-## `--tcp-tun`: let the kernel carry TCP
-
-By default mosh carries a forwarded TCP connection with a small TCP
-implementation of its own (see [How it works](design.md)). With `--tcp-tun`,
-each end tries to create a TUN network device instead, so that the operating
-system's TCP is the endpoint.
-
-- Needs Linux and the `CAP_NET_ADMIN` capability (for example, running as
-  root). An end that cannot create the device quietly uses the default
-  instead; the two ends decide independently.
-- **On your machine, the address changes.** With a TUN device, applications
-  connect to `10.111.0.2:port` instead of `127.0.0.1:port`. The client shows
-  which applies in a message at the top of the screen for a few seconds after
-  connecting.
-- On the server, a TUN device is only used for forwards whose `host` is an
-  IPv4 address of the server itself.
-- Applies to `-L` only; `-R` never uses a TUN device.
-- Only one mosh session per machine can use TUN devices at a time (they use
-  fixed networks, `10.111.0.0/24` and `10.112.0.0/24`).
-
-Most people should not use this option.
-
 ## Running the helper programs directly
 
 The `mosh` wrapper passes the forwarding options to both ends. If you start
@@ -168,10 +146,7 @@ in the same order:
 | `-R spec`, `--tcp-remote-forward=spec` | `-R spec` |
 | `-LU spec`, `--udp-forward=spec` | `-LU spec` |
 | `-RU spec`, `--udp-remote-forward=spec` | `-RU spec` |
-| `--tcp-tun` | `-w` |
 | `--fragment-parity=mode` | `-F mode` |
-
-`mosh-server -v` prints how each TCP forward is being provided.
 
 ## Troubleshooting
 
@@ -179,8 +154,7 @@ in the same order:
 The usual causes, in order:
 the server is not this build (forwards need both ends);
 the session has not finished connecting yet;
-the target itself refused, in which case the refusal is passed back;
-or `--tcp-tun` is in use and the forward is at `10.111.0.2`, not `127.0.0.1`.
+or the target itself refused, in which case the refusal is passed back.
 
 **A forward stops when I close the terminal session.**
 Forwards live exactly as long as the mosh session. There is no equivalent of

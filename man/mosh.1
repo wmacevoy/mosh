@@ -318,24 +318,7 @@ inside the mosh session and connected by the client to
 127.0.0.1, so that by default only programs on the server itself can
 use the forward.  The option may be repeated.  Connections made before
 the client has connected, or while the session is shutting down, are
-refused.  A TUN device is never used for these forwards.
-
-.TP
-.B \-\-tcp\-tun
-Experimental.  Use a TUN network device for \fB\-L\fP
-where possible, so that the operating system's own TCP implementation
-carries forwarded connections rather than the simpler one built into
-mosh.  This needs Linux and the CAP_NET_ADMIN capability (for
-instance, running as root).  Each end decides for itself, and uses
-ordinary sockets as usual if it cannot have a device.
-
-When the client has a TUN device, applications connect to
-\fB10.111.0.2\fP:\fIPORT\fP instead of \fIBIND_ADDRESS\fP:\fIPORT\fP;
-the client says which applies in a message at the top of the screen
-when the session starts.  The server uses a device only for forwards
-whose \fIHOST\fP is an IPv4 address of the server itself.  The client
-and server devices use the networks 10.111.0.0/24 and 10.112.0.0/24,
-which only one session on a machine can use at a time.
+refused.
 
 .TP
 .B \-\-experimental\-remote\-ip={proxy|local|remote}

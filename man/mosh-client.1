@@ -25,7 +25,6 @@ MOSH_KEY=KEY
 [\-R \fR[\fP\fIBIND\fP:\fR]\fP\fIPORT\fP:\fIHOST\fP:\fIHOSTPORT\fP]
 [\-LU \fR[\fP\fIBIND\fP:\fR]\fP\fIPORT\fP:\fIHOST\fP:\fIHOSTPORT\fP]
 [\-RU \fR[\fP\fIBIND\fP:\fR]\fP\fIPORT\fP:\fIHOST\fP:\fIHOSTPORT\fP]
-[\-w]
 [\-F auto|always|never]
 IP PORT
 .br
@@ -59,8 +58,7 @@ server; the \-LU and \-RU options do the same for UDP datagrams (the
 specification being a separate word after the option), as described in
 .BR mosh (1).
 \fBmosh-server\fP must be given the same specifications in the same order.
-The \-w option is \fB\-\-tcp\-tun\fP, and the \-F option takes the mode
-described under \fB\-\-fragment\-parity\fP.
+The \-F option takes the mode described under \fB\-\-fragment\-parity\fP.
 
 With the \-c option, \fBmosh-client\fP instead prints the number of colors
 of the terminal given by the TERM environment variable.

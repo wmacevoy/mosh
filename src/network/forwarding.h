@@ -61,7 +61,6 @@ public:
               bool client,
               const std::vector<std::string>& udp_specs,
               const std::vector<std::string>& tcp_specs,
-              bool tcp_tun,
               const std::vector<std::string>& tcp_remote_specs = std::vector<std::string>(),
               const std::vector<std::string>& udp_remote_specs = std::vector<std::string>() )
     : mux(), udp(), udp_remote(), tcp(), tcp_remote()
@@ -81,16 +80,14 @@ public:
     if ( !tcp_specs.empty() ) {
       tcp.reset( new TCPForwarder( link,
                                    client ? TCPForwarder::LISTEN : TCPForwarder::CONNECT,
-                                   tcp_specs,
-                                   tcp_tun ? TCPForwarder::TUN : TCPForwarder::ADAPTER ) );
+                                   tcp_specs ) );
       mux.set_sink( UDPForwarder::TYPE_TCP_SEGMENT, tcp.get() );
     }
     if ( !tcp_remote_specs.empty() ) {
-      /* The same again with the ends exchanged.  (Always with sockets: no TUN device yet.) */
+      /* the same again with the ends exchanged */
       tcp_remote.reset( new TCPForwarder( link,
                                           client ? TCPForwarder::CONNECT : TCPForwarder::LISTEN,
                                           tcp_remote_specs,
-                                          TCPForwarder::ADAPTER,
                                           UDPForwarder::TYPE_TCP_REVERSE ) );
       mux.set_sink( UDPForwarder::TYPE_TCP_REVERSE, tcp_remote.get() );
     }
@@ -139,20 +136,6 @@ public:
     if ( tcp_remote ) {
       tcp_remote->set_verbose( verbose );
     }
-  }
-
-  /* What the user should know about how TCP forwards are provided. */
-  std::vector<std::string> notes( void ) const
-  {
-    std::vector<std::string> ret;
-    if ( tcp ) {
-      ret = tcp->get_notes();
-    }
-    if ( tcp_remote ) {
-      const std::vector<std::string> more = tcp_remote->get_notes();
-      ret.insert( ret.end(), more.begin(), more.end() );
-    }
-    return ret;
   }
 
   std::vector<int> fds( void ) const

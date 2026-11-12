@@ -30,10 +30,8 @@ failures and 2 skips, as before, plus the new unit tests).
 
 | Scenario | Result |
 |---|---|
-| TCP `-L`, adapter at both ends | Echo, 2 MB each way with a half-close, 8 simultaneous connections, and a refused target all correct |
+| TCP `-L` | Echo, 2 MB each way with a half-close, 8 simultaneous connections, and a refused target all correct |
 | The same with 2% and 10% of datagrams dropped | Correct; roughly 10-30 Mbit/s at 2% and about 1 Mbit/s at 10% |
-| TCP `-L` with a TUN device at the client, the server, or both | Correct, including at 2% loss (run inside an unprivileged network namespace) |
-| `--tcp-tun` without privileges | Both ends fall back to the adapter and say so |
 | TCP `-R` | The same checks pass, clean and at 2% loss |
 | UDP `-LU` and `-RU` | Datagrams from 1 byte to 65,507 bytes echoed correctly |
 | UDP, 3000-byte datagrams, 5% loss | Request/reply pairs complete 76% of the time without parity, 97.5% with it, 95.5% in `auto` |
@@ -44,19 +42,17 @@ failures and 2 skips, as before, plus the new unit tests).
 
 - A real network. Every test ran over loopback, with loss injected by a
   relay. Latency, reordering, real roaming and real MTU limits are untested.
-- TUN devices as real root outside a network namespace.
 - IPv6 forwarding targets and IPv6 mosh sessions.
 - The `mosh` wrapper over a real ssh connection (only that it passes the
   options to both ends).
-- Any platform other than Linux. The TUN back end is Linux-only by design;
-  the rest is meant to be portable but has not been built elsewhere.
+- Any platform other than Linux. The code is meant to be portable but has
+  not been built elsewhere.
 
 ## Known limits
 
 **TCP throughput on long paths.** The built-in TCP has no window scaling, so
 at most about 64 KB is in flight per round trip: roughly 5 Mbit/s at 100 ms.
 It also has no selective acknowledgment, so recovery from heavy loss is slow.
-`--tcp-tun` avoids both where it can be used.
 
 **No rate limiting.** Forwarded traffic competes with the terminal for the
 same path. A large transfer can make the terminal less responsive.
@@ -69,11 +65,6 @@ happen.
 **Automatic parity reacts in seconds, not instantly.** Loss is measured over
 a second and reported at most every three, so the first few seconds of a bad
 patch are unprotected.
-
-**TUN devices.** Fixed subnets mean one TUN-using session per machine. On the
-server, only targets on the server itself are reached through the device.
-The interface MTU is set once, so if mosh later lowers its own packet size
-the kernel's segments may no longer fit.
 
 **Counts.** Up to 16 forwards of each kind, and 64 simultaneous TCP
 connections and 64 UDP conversations in each direction.
@@ -92,4 +83,8 @@ no security review.
 - `-D`, a SOCKS proxy. It needs asynchronous DNS resolution in `mosh-server`,
   which mosh does not have, and would lean hard on the built-in TCP.
 - Forwarding of Unix-domain sockets, X11, or the ssh agent.
-- A TUN device for `-R`.
+- Carrying forwarded TCP with the operating system's own TCP through a TUN
+  device. An earlier version of this branch had it (`--tcp-tun`) and it
+  worked, but it needed root and Linux, changed the address applications
+  connect to, and on the server only reached the server's own addresses, so
+  it was removed.

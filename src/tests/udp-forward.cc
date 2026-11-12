@@ -609,8 +609,8 @@ static void test_remote( void )
 
   /* each end has both kinds, sharing one side channel */
   TestLink to_server, to_client;
-  Forwarding client( &to_server, true, local_specs, none, false, none, remote_specs );
-  Forwarding server( &to_client, false, local_specs, none, false, none, remote_specs );
+  Forwarding client( &to_server, true, local_specs, none, none, remote_specs );
+  Forwarding server( &to_client, false, local_specs, none, none, remote_specs );
   to_server.peer = server.sink();
   to_client.peer = client.sink();
 

@@ -30,10 +30,9 @@
     also delete it here.
 */
 
-/* Tests TCP forwarding with the socket adapter at both ends: real TCP
-   connections through a pair of forwarders joined by an in-memory side
-   channel that can lose datagrams.  Also the IPv4 packet framing used
-   with a TUN device (the device itself needs privileges to test). */
+/* Tests TCP forwarding: real TCP connections through a pair of
+   forwarders joined by an in-memory side channel that can lose
+   datagrams. */
 
 #include <cstdio>
 #include <cstdlib>
@@ -49,7 +48,6 @@
 
 #include "src/network/forwarding.h"
 #include "src/network/tcpforward.h"
-#include "src/network/tuntcp.h"
 #include "src/util/timestamp.h"
 
 using namespace Network;
@@ -291,8 +289,8 @@ static void test_transfers( void )
   const std::vector<std::string> specs( spec, spec + 2 );
 
   TestLink to_server, to_client;
-  TCPForwarder client( &to_server, TCPForwarder::LISTEN, specs, TCPForwarder::ADAPTER );
-  TCPForwarder server( &to_client, TCPForwarder::CONNECT, specs, TCPForwarder::ADAPTER );
+  TCPForwarder client( &to_server, TCPForwarder::LISTEN, specs );
+  TCPForwarder server( &to_client, TCPForwarder::CONNECT, specs );
 
   /* a clean path */
   CHECK( pump( client, to_server, server, to_client, start_application( listen_port, 300000 ) ) == DELIVERED );
@@ -346,8 +344,8 @@ static void test_remote( void )
 
   /* each end has both kinds, sharing one side channel */
   TestLink to_server, to_client;
-  Forwarding client( &to_server, true, none, local_specs, false, remote_specs );
-  Forwarding server( &to_client, false, none, local_specs, false, remote_specs );
+  Forwarding client( &to_server, true, none, local_specs, remote_specs );
+  Forwarding server( &to_client, false, none, local_specs, remote_specs );
 
   /* the client listens for the local forward and the server for the remote one, not the other way about */
   CHECK( client.fds().size() == 1 && server.fds().size() == 1 );
@@ -366,62 +364,8 @@ static void test_remote( void )
   waitpid( target, NULL, 0 );
 }
 
-static void test_ip_packet( void )
-{
-  TCPInUDP s;
-  s.source_port = 1234;
-  s.dest_port = 80;
-  s.seq = 42;
-  s.flags = TCPInUDP::SYN;
-  s.window = 1000;
-  s.payload = "abc";
-
-  const uint32_t from = 0x0A6F0001, to = 0x0A6F0002;
-  Addr a, b;
-  memset( &a, 0, sizeof( a ) );
-  memset( &b, 0, sizeof( b ) );
-  a.sin.sin_family = b.sin.sin_family = AF_INET;
-  a.sin.sin_addr.s_addr = htonl( from );
-  b.sin.sin_addr.s_addr = htonl( to );
-  const std::string tcp = s.to_tcp( a, b );
-  const std::string packet = TunPort::ip_packet( from, to, 7, tcp );
-
-  CHECK( packet.size() == 20 + tcp.size() );
-  CHECK( static_cast<unsigned char>( packet[0] ) == 0x45 && packet[9] == IPPROTO_TCP );
-
-  /* a correct header checksum makes the header sum to all ones */
-  unsigned int sum = 0;
-  for ( size_t i = 0; i < 20; i += 2 ) {
-    sum += ( static_cast<unsigned char>( packet[i] ) << 8 ) | static_cast<unsigned char>( packet[i + 1] );
-  }
-  sum = ( sum & 0xFFFF ) + ( sum >> 16 );
-  sum = ( sum & 0xFFFF ) + ( sum >> 16 );
-  CHECK( sum == 0xFFFF );
-
-  uint32_t source, dest;
-  std::string out;
-  CHECK( TunPort::parse_ip_packet( packet, source, dest, out ) );
-  CHECK( source == from && dest == to && out == tcp );
-
-  /* trailing padding is not part of the segment */
-  CHECK( TunPort::parse_ip_packet( packet + "padding", source, dest, out ) && out == tcp );
-
-  std::string bad = packet;
-  bad[0] = 0x65; /* IPv6 */
-  CHECK( !TunPort::parse_ip_packet( bad, source, dest, out ) );
-  bad = packet;
-  bad[9] = IPPROTO_UDP;
-  CHECK( !TunPort::parse_ip_packet( bad, source, dest, out ) );
-  bad = packet;
-  bad[6] = 0x20; /* more fragments */
-  CHECK( !TunPort::parse_ip_packet( bad, source, dest, out ) );
-  CHECK( !TunPort::parse_ip_packet( packet.substr( 0, packet.size() - 1 ), source, dest, out ) );
-  CHECK( !TunPort::parse_ip_packet( packet.substr( 0, 19 ), source, dest, out ) );
-}
-
 int main()
 {
-  test_ip_packet();
   test_transfers();
   test_remote();
   return EXIT_SUCCESS;
