@@ -6,7 +6,7 @@ This is an unofficial fork of [mosh](https://mosh.org). It has **not** been secu
 
 ### Install
 
-Linux (x86-64 or ARM64, glibc 2.31 or newer), into `~/.local/bin`, no root needed:
+Linux (x86-64 or ARM64, glibc 2.34 or newer) and macOS (11 or later, Apple Silicon or Intel), into `~/.local/bin`, no root needed:
 
 ```
 curl -fsSL https://raw.githubusercontent.com/wmacevoy/mosh/master/scripts/install.sh | sh
@@ -16,7 +16,9 @@ That installs the newest release. The `install.sh` attached to this release inst
 
 Windows: unpack the `msys2` zip. It contains `mosh-client.exe` and the MSYS2 libraries it needs; the `mosh` wrapper script also needs `perl` and `ssh`.
 
-macOS and everything else: build from the source package.
+Everything else: build from the source package.
+
+The macOS programs are ad-hoc signed, not signed with an Apple Developer ID or notarized. If you download the package with a browser rather than the installer, clear macOS's quarantine with `xattr -dr com.apple.quarantine` on the unpacked directory.
 
 ### Checking a download
 
