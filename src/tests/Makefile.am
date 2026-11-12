@@ -2,7 +2,7 @@ EXTRA_DIST = \
 	hold-stdin print-exitstatus \
 	e2e-test e2e-test-server \
 	e2e-test-subrs \
-	forward-e2e.test forward-e2e.py \
+	forward-e2e.test forward-e2e.py headless-smoke.py \
 	mosh-client mosh-server \
 	local.test \
 	$(displaytests) \
