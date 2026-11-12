@@ -25,7 +25,7 @@ failures and 2 skips, as before, plus the new unit tests).
 | `udp-forward` | Specification parsing, the frame format, the replay window, fragmentation and parity (every single-fragment loss across a range of sizes), reassembly timeout, the automatic parity decision, loss measurement, and a relay through two forwarders |
 | `tcp-in-udp` | The header transformation in both directions, with checksums checked against independently computed values for IPv4 and IPv6 |
 | `forward-e2e.test` | A real `mosh-server` and `mosh-client` with one forward of each kind (`-L`, `-R`, `-LU`, `-RU`): TCP both ways with an orderly close, and UDP datagrams sent whole and in fragments. Needs `python3`; skipped without it |
-| `tcp-forward` | Real TCP connections through a pair of socket adapters, clean and with 5% of datagrams lost, with a small MTU, a refusing target, a peer that does not support forwarding, and local and remote forwards sharing one session |
+| `tcp-forward` | Six simulated hours out of contact without losing a connection; and real TCP connections through a pair of socket adapters, clean and with 5% of datagrams lost, with a small MTU, a refusing target, a peer that does not support forwarding, and local and remote forwards sharing one session |
 
 **End to end:**
 
@@ -105,8 +105,8 @@ patch are unprotected.
 **Counts.** Up to 16 forwards of each kind, and 64 simultaneous TCP
 connections and 64 UDP conversations in each direction.
 
-**Forwards end with the session.** There is no way to keep a forward without
-a terminal, and no way to add or remove one while the session runs.
+**Forwards end with the session.** There is no way to add or remove one
+while the session runs.
 
 **Security.** A local forward lets anything that can reach the listening
 address use it, so the default is loopback only. The server will connect or

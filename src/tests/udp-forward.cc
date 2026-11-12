@@ -313,6 +313,7 @@ public:
   bool sidechannel_ready( void ) const { return ready; }
   size_t sidechannel_max_payload( void ) const { return max_payload; }
   double sidechannel_loss( void ) const { return loss; }
+  bool sidechannel_connected( void ) const { return true; }
   void sidechannel_send( const std::string& payload )
   {
     sent.push_back( payload );

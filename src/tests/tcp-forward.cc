@@ -85,6 +85,7 @@ public:
   bool sidechannel_ready( void ) const { return ready; }
   size_t sidechannel_max_payload( void ) const { return max_payload; }
   double sidechannel_loss( void ) const { return 0; }
+  bool sidechannel_connected( void ) const { return true; }
   void sidechannel_send( const std::string& payload )
   {
     CHECK( payload.size() <= max_payload );
@@ -376,10 +377,12 @@ class RecordingSink : public SegmentSink
 {
 public:
   std::vector<TCPInUDP> sent;
+  bool up;
 
-  RecordingSink() : sent() {}
+  RecordingSink() : sent(), up( true ) {}
 
   bool segment_ready( void ) const { return true; }
+  bool link_up( void ) const { return up; }
   size_t max_datagram( void ) const { return 1200; }
   void to_network( uint8_t, const TCPInUDP& segment ) { sent.push_back( segment ); }
 };
@@ -447,9 +450,122 @@ static void test_tiny_mss( void )
   close( listener );
 }
 
+/* Opens a connection through an adapter at the connecting end; returns the target's end of it. */
+static int open_through( AdapterPort& adapter, RecordingSink& sink, int listener )
+{
+  TCPInUDP syn;
+  syn.source_port = 1;
+  syn.flags = TCPInUDP::SYN;
+  syn.seq = 100;
+  syn.window = 0xFFFF;
+  freeze_timestamp();
+  adapter.from_network( 0, syn );
+  for ( int i = 0; i < 200 && sink.sent.empty(); i++ ) {
+    usleep( 10000 );
+    freeze_timestamp();
+    adapter.tick( frozen_timestamp() );
+  }
+  CHECK( sink.sent.size() == 1 && sink.sent[0].has( TCPInUDP::SYN ) );
+
+  TCPInUDP ack;
+  ack.source_port = 1;
+  ack.flags = TCPInUDP::ACK;
+  ack.seq = 101;
+  ack.ack = sink.sent[0].seq + 1;
+  ack.window = 0xFFFF;
+  adapter.from_network( 0, ack );
+
+  const int app = accept( listener, NULL, NULL );
+  CHECK( app >= 0 );
+  return app;
+}
+
+static bool any_reset( const RecordingSink& sink )
+{
+  for ( size_t i = 0; i < sink.sent.size(); i++ ) {
+    if ( sink.sent[i].has( TCPInUDP::RST ) ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/*
+ * A mosh session can be out of contact for hours and carry on, and so
+ * must a connection forwarded through it.  But a connection whose peer
+ * has stopped answering while the session is in contact is given up on.
+ */
+static void test_outage( void )
+{
+  uint16_t target_port;
+  const int listener = listening_socket( target_port );
+  Addr target;
+  memset( &target, 0, sizeof( target ) );
+  target.sin.sin_family = AF_INET;
+  target.sin.sin_addr.s_addr = htonl( INADDR_LOOPBACK );
+  target.sin.sin_port = htons( target_port );
+
+  for ( int in_contact = 1; in_contact >= 0; in_contact-- ) {
+    RecordingSink sink;
+    AdapterPort adapter( &sink, false );
+    adapter.add_target( 0, target, sizeof( target.sin ) );
+    const int app = open_through( adapter, sink, listener );
+
+    /* data is sent, and nothing comes back */
+    CHECK( write_all( app, "is anybody there?" ) );
+    usleep( 50000 );
+    sink.sent.clear();
+    adapter.read_fd( adapter.fds().at( 0 ) );
+    CHECK( sink.sent.size() == 1 && sink.sent[0].payload == "is anybody there?" );
+    const TCPInUDP data = sink.sent[0];
+
+    sink.up = in_contact;
+    sink.sent.clear();
+    uint64_t now = frozen_timestamp();
+    for ( int minute = 0; minute < 6 * 60; minute++ ) { /* six hours pass */
+      now += 60000;
+      adapter.tick( now );
+    }
+
+    if ( in_contact ) {
+      /* silence from a peer we can reach: after some retransmissions, give up and say so */
+      CHECK( sink.sent.size() > 3 && sink.sent.size() < 20 );
+      CHECK( any_reset( sink ) && adapter.connection_count() == 0 );
+    } else {
+      /* silence because the session is out of contact: keep trying, quietly, for as long as it takes */
+      CHECK( !any_reset( sink ) && adapter.connection_count() == 1 );
+      for ( size_t i = 0; i < sink.sent.size(); i++ ) {
+        CHECK( sink.sent[i].payload == data.payload && sink.sent[i].seq == data.seq );
+      }
+
+      /* contact returns: it is sent again at once, not when a backed-off timer gets round to it */
+      sink.up = true;
+      sink.sent.clear();
+      adapter.tick( now + 1 );
+      CHECK( sink.sent.size() == 1 && sink.sent[0].payload == data.payload );
+
+      /* and the connection carries on as if nothing had happened */
+      TCPInUDP reply;
+      reply.source_port = 1;
+      reply.flags = TCPInUDP::ACK | TCPInUDP::PSH;
+      reply.seq = 101;
+      reply.ack = data.seq + data.payload.size();
+      reply.window = 0xFFFF;
+      reply.payload = "yes, still here";
+      adapter.from_network( 0, reply );
+      char buf[64];
+      CHECK( recv( app, buf, sizeof( buf ), 0 ) == 15 && memcmp( buf, "yes, still here", 15 ) == 0 );
+      CHECK( adapter.connection_count() == 1 );
+    }
+    close( app );
+  }
+  close( listener );
+}
+
 int main()
 {
   test_tiny_mss();
+  test_outage();
   test_transfers();
   test_remote();
   return EXIT_SUCCESS;

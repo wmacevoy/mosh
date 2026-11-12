@@ -160,6 +160,12 @@ public:
   void sidechannel_send( const std::string& payload );
 
   double sidechannel_loss( void ) const { return peer_recv_loss; }
+
+  bool sidechannel_connected( void ) const
+  {
+    const uint64_t heard = connection.get_last_heard();
+    return heard != uint64_t( -1 ) && timestamp() - heard < SIDECHANNEL_QUIET;
+  }
 };
 }
 

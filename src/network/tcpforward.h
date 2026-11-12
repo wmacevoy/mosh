@@ -82,6 +82,13 @@ public:
   /* False if nothing can be sent now (so new connections should be refused). */
   virtual bool segment_ready( void ) const = 0;
 
+  /*
+   * False while the session has lost contact with the other end.  It
+   * may be back in a moment or tomorrow; connections are kept, not
+   * timed out, in the meantime.
+   */
+  virtual bool link_up( void ) const = 0;
+
   /* The largest segment, in TCP-in-UDP datagram form, that can be sent. */
   virtual size_t max_datagram( void ) const = 0;
 
@@ -160,6 +167,7 @@ public:
 
   /* SegmentSink */
   bool segment_ready( void ) const { return link->sidechannel_ready(); }
+  bool link_up( void ) const { return link->sidechannel_connected(); }
   size_t max_datagram( void ) const;
   void to_network( uint8_t forward, const TCPInUDP& segment );
 

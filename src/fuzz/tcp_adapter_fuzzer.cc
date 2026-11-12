@@ -61,13 +61,15 @@ class Sink : public SegmentSink
 {
 public:
   size_t limit;
+  bool up; /* whether the session is in contact with the other end */
   bool any;
   TCPInUDP last;
   unsigned int count;
 
-  Sink() : limit( 1200 ), any( false ), last(), count( 0 ) {}
+  Sink() : limit( 1200 ), up( true ), any( false ), last(), count( 0 ) {}
 
   bool segment_ready( void ) const { return true; }
+  bool link_up( void ) const { return up; }
   size_t max_datagram( void ) const { return limit; }
   void to_network( uint8_t, const TCPInUDP& segment )
   {
@@ -175,7 +177,10 @@ extern "C" int LLVMFuzzerTestOneInput( const uint8_t* data, size_t size )
           break;
         }
 
-        case 2: /* time passes */
+        case 2: /* time passes, and contact with the other end may come or go */
+          if ( body.size() > 1 ) {
+            sink.up = at( body, 1 ) & 1;
+          }
           later += at( body, 0 ) * 25;
           adapter.tick( timestamp() + later );
           adapter.wait_time( timestamp() + later );

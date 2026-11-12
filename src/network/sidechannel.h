@@ -59,6 +59,9 @@ namespace Network {
 
 const uint8_t SIDECHANNEL_MAGIC = 0xFF;
 
+/* How long without a word from the peer before we say we have lost contact with it (ms). */
+const uint64_t SIDECHANNEL_QUIET = 10000;
+
 /* Bits for Instruction.capabilities */
 const uint32_t CAPABILITY_SIDECHANNEL = 1;
 
@@ -114,6 +117,13 @@ public:
 
   /* Payload must begin with SIDECHANNEL_MAGIC. */
   virtual void sidechannel_send( const std::string& payload ) = 0;
+
+  /*
+   * True if we have heard from the peer lately.  The session outlives
+   * losing contact (that is what mosh is for), so this going false is
+   * a reason to wait, not to give up.
+   */
+  virtual bool sidechannel_connected( void ) const = 0;
 
   /* The fraction (0 to 1) of what we send that the peer says is not arriving; 0 until it says. */
   virtual double sidechannel_loss( void ) const = 0;

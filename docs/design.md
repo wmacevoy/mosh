@@ -158,6 +158,12 @@ At the connecting end it answers by connecting to the target, and completes
 the handshake only if that works, so a refused connection is refused all the
 way back to the application.
 
+A mosh session survives losing contact with the other end, so a forwarded
+connection must too. While the session has not heard from its peer for ten
+seconds, unanswered retransmissions are not counted against a connection, and
+when the peer is heard from again everything outstanding is sent at once
+rather than when a backed-off timer expires.
+
 It implements the handshake in both roles, cumulative acknowledgment,
 reassembly of out-of-order segments, retransmission with an adaptive timeout
 (RFC 6298), fast retransmit and recovery (NewReno, RFC 6582), slow start and

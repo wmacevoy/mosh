@@ -121,7 +121,8 @@ static uint32_t mss_option( const std::string& options )
 }
 
 AdapterPort::AdapterPort( SegmentSink* s_sink, bool s_client )
-  : sink( s_sink ), client( s_client ), listeners(), targets(), conns(), next_port( 32768 ), prng()
+  : sink( s_sink ), client( s_client ), listeners(), targets(), conns(), next_port( 32768 ), prng(),
+    link_was_up( true )
 {}
 
 AdapterPort::~AdapterPort()
@@ -587,10 +588,7 @@ void AdapterPort::process_ack( Conn& c, const TCPInUDP& segment, uint64_t now )
     }
     c.rtt_timing = false;
   }
-  if ( c.rtt_valid ) {
-    const double rto = c.srtt + std::max( 4 * c.rttvar, 10.0 );
-    c.rto = std::min<double>( std::max<double>( rto, RTO_MIN ), RTO_MAX );
-  }
+  c.rto = settled_rto( c );
 
   if ( c.recovering ) {
     if ( seq_lt( ack, c.recover ) ) {
@@ -680,14 +678,31 @@ void AdapterPort::retransmit_one( Conn& c )
   }
 }
 
+/* The retransmission timeout when nothing has gone wrong: from the measured round trip, if there is one. */
+uint32_t AdapterPort::settled_rto( const Conn& c ) const
+{
+  if ( !c.rtt_valid ) {
+    return RTO_INITIAL;
+  }
+  const double rto = c.srtt + std::max( 4 * c.rttvar, 10.0 );
+  return std::min<double>( std::max<double>( rto, RTO_MIN ), RTO_MAX );
+}
+
 /* The retransmission timer has gone off. */
 void AdapterPort::timeout( Conn& c, uint64_t now )
 {
   c.rto = std::min<uint32_t>( c.rto * 2, RTO_MAX );
   c.rto_deadline = now + c.rto;
 
+  /*
+   * Unanswered retransmissions count against a connection only while
+   * the session is in contact with the other end.  Otherwise the reason
+   * is plain, and no fault of the connection's.
+   */
+  const bool up = sink->link_up();
+
   if ( c.state == SYN_SENT || c.state == SYN_RCVD ) {
-    if ( ++c.retries > MAX_SYN_RETRIES ) {
+    if ( up && ++c.retries > MAX_SYN_RETRIES ) {
       abort( c, c.state == SYN_RCVD );
     } else if ( c.state == SYN_SENT ) {
       emit( c, TCPInUDP::SYN, c.iss, "", true );
@@ -698,7 +713,7 @@ void AdapterPort::timeout( Conn& c, uint64_t now )
   }
 
   /* A closed window is the other end's choice, not a sign that it has gone. */
-  if ( c.snd_wnd != 0 && ++c.retries > MAX_RETRIES ) {
+  if ( up && c.snd_wnd != 0 && ++c.retries > MAX_RETRIES ) {
     abort( c, true );
     return;
   }
@@ -807,6 +822,23 @@ void AdapterPort::read_fd( int fd )
 
 void AdapterPort::tick( uint64_t now )
 {
+  /*
+   * Back in contact after an absence: send again now whatever was
+   * waiting, rather than when a timer backed off during the silence
+   * happens to expire.
+   */
+  const bool up = sink->link_up();
+  if ( up && !link_was_up ) {
+    for ( std::list<Conn>::iterator i = conns.begin(); i != conns.end(); i++ ) {
+      if ( !i->dead && i->rto_deadline ) {
+        i->retries = 0;
+        i->rto = settled_rto( *i );
+        i->rto_deadline = now;
+      }
+    }
+  }
+  link_was_up = up;
+
   for ( std::list<Conn>::iterator i = conns.begin(); i != conns.end(); i++ ) {
     Conn& c = *i;
     if ( c.dead ) {

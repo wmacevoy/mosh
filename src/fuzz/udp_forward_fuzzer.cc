@@ -63,6 +63,7 @@ public:
   bool sidechannel_ready( void ) const { return true; }
   size_t sidechannel_max_payload( void ) const { return limit; }
   double sidechannel_loss( void ) const { return loss; }
+  bool sidechannel_connected( void ) const { return true; }
   void sidechannel_send( const std::string& payload )
   {
     /* whatever it sends must fit, and must be a frame */

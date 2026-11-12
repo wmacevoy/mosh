@@ -246,6 +246,9 @@ public:
   uint64_t timeout( void ) const;
   double get_SRTT( void ) const { return SRTT; }
 
+  /* When a datagram last arrived from the peer; uint64_t( -1 ) if none has. */
+  uint64_t get_last_heard( void ) const { return last_heard; }
+
   /* The fraction (0 to 1) of the peer's recent datagrams that did not reach us. */
   double get_recv_loss( void ) const { return recv_loss; }
 

@@ -67,6 +67,12 @@
  * zero-window probes, independent half-close of each direction, and
  * resets.
  *
+ * A mosh session survives losing contact with the other end for as long
+ * as it takes, and so must the connections it carries.  While the
+ * session is out of contact, retransmissions that go unanswered are not
+ * held against a connection, and when contact returns everything
+ * outstanding is sent again at once.
+ *
  * What it leaves out, which costs speed but not correctness: selective
  * acknowledgment, window scaling, timestamps, delayed acknowledgments
  * and urgent data.
@@ -186,6 +192,7 @@ private:
   std::list<Conn> conns;
   uint16_t next_port;
   PRNG prng;
+  bool link_was_up;
 
   Conn* find( uint8_t forward, uint16_t port );
   Conn* new_conn( uint8_t forward, uint16_t port, int fd );
@@ -193,6 +200,7 @@ private:
 
   uint32_t local_mss( void ) const;
   uint32_t agreed_mss( const std::string& their_options ) const;
+  uint32_t settled_rto( const Conn& c ) const;
   uint16_t window( const Conn& c ) const;
   void emit( Conn& c, uint16_t flags, uint32_t seq, const std::string& payload, bool with_mss = false );
   void reply_reset( uint8_t forward, uint16_t port, const TCPInUDP& to );
