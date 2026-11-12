@@ -245,7 +245,9 @@ int main( void )
   CHECK( exists( "tree/hollow" ) );
   {
     struct stat st, was;
+#ifndef __CYGWIN__ /* (Windows keeps no such thing: there, what can be run is decided by its name) */
     CHECK( stat( ( root + "/tree/sub/deep/c" ).c_str(), &st ) == 0 && ( st.st_mode & 0100 ) );
+#endif
     CHECK( stat( ( root + "/src/sub/b.bin" ).c_str(), &was ) == 0
            && stat( ( root + "/tree/sub/b.bin" ).c_str(), &st ) == 0 && st.st_mtime == was.st_mtime );
   }

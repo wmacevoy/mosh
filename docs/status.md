@@ -89,8 +89,9 @@ independent review.
 - IPv6 forwarding targets and IPv6 mosh sessions.
 - The `mosh` wrapper over a real ssh connection (only that it passes the
   options to both ends).
-- `mocp` over a real ssh login, between two machines, or on Windows beyond
-  one file each way between programs on the same machine.
+- `mocp` over a real ssh login, or between two machines. On Windows, the
+  copying itself is tested (`file-copy`) and one file each way between the
+  packaged programs on one machine; the `mocp` command there is not.
 - The relay over a real ssh connection, and on a real network that blocks
   UDP. In the tests the remote relay is started directly and UDP is "blocked"
   by pointing the client at a port nothing answers on.
@@ -110,7 +111,8 @@ is for copies that must survive the network, not for the fastest copy.
 
 **`mocp` sends changed files whole**, does not compress, and with `--auto`
 looks for changes at intervals rather than being told of them. It keeps
-times and permission bits, not ownership, links or special files. Its
+times and permission bits (the latter not on Windows, which has none), not
+ownership, links or special files. Its
 `--auto` goes one way.
 
 **`--stdio` brings back neither the command's standard error nor its exit
