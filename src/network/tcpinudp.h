@@ -58,7 +58,7 @@
  *
  * This is the structural layer for carrying TCP over mosh's UDP
  * forwarding (udpforward.h).  What a UDP socket sends or receives -- and
- * so what "mosh -L" forwards -- is the right-hand column from offset 8
+ * so what "mosh -U" forwards -- is the right-hand column from offset 8
  * on: the "datagram" form below.  The ports travel in the UDP header,
  * i.e. in socket addresses, and are rewritten by the forwarder exactly
  * as a NAT would rewrite them.

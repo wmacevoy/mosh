@@ -132,7 +132,7 @@ static void print_usage( FILE* stream, const char* argv0 )
 {
   fprintf( stream,
            "Usage: %s new [-s] [-v] [-i LOCALADDR] [-p PORT[:PORT2]] [-c COLORS] [-l NAME=VALUE]\n"
-           "       [-L [BIND:]PORT:HOST:HOSTPORT] [-T [BIND:]PORT:HOST:HOSTPORT] [-t]\n"
+           "       [-L [BIND:]PORT:HOST:HOSTPORT] [-U [BIND:]PORT:HOST:HOSTPORT] [-w]\n"
            "       [-F auto|always|never]\n"
            "       [-- COMMAND...]\n",
            argv0 );
@@ -228,7 +228,7 @@ int main( int argc, char* argv[] )
   if ( ( argc >= 2 ) && ( strcmp( argv[1], "new" ) == 0 ) ) {
     /* new option syntax */
     int opt;
-    while ( ( opt = getopt( argc - 1, argv + 1, "@:i:p:c:svl:L:T:tF:" ) ) != -1 ) {
+    while ( ( opt = getopt( argc - 1, argv + 1, "@:i:p:c:svl:L:U:wF:" ) ) != -1 ) {
       switch ( opt ) {
           /*
            * This undocumented option does nothing but eat its argument.
@@ -270,14 +270,14 @@ int main( int argc, char* argv[] )
           locale_vars.push_back( std::string( optarg ) );
           break;
         case 'L':
+          /* forward TCP connections from the client to HOST:HOSTPORT, as ssh's -L does */
+          tcp_forwards.push_back( std::string( optarg ) );
+          break;
+        case 'U':
           /* forward UDP datagrams from the client to HOST:HOSTPORT */
           udp_forwards.push_back( std::string( optarg ) );
           break;
-        case 'T':
-          /* forward TCP connections from the client to HOST:HOSTPORT */
-          tcp_forwards.push_back( std::string( optarg ) );
-          break;
-        case 't':
+        case 'w':
           /* use a TUN device for TCP forwarding where possible */
           tcp_tun = true;
           break;

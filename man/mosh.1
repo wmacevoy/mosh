@@ -58,7 +58,7 @@ server.) Occasional echo mistakes are corrected within a network
 round-trip and do not cause lasting effect.
 
 \fBmosh\fP does not support X forwarding or the non-interactive uses
-of SSH, including sshfs (but see \fB\-L\fP and \fB\-\-tcp\-forward\fP
+of SSH, including sshfs (but see \fB\-L\fP and \fB\-U\fP
 for experimental port forwarding). \fBmosh\fP works through
 typical client-side network address translators but requires UDP to
 pass between client and server. By default, \fBmosh\fP uses the ports
@@ -237,7 +237,7 @@ option requires the \fBhost\fP argument to be a local, numeric
 IPv4/IPv6 address.  This option is useful for testing.
 
 .TP
-.B \-L \fR[\fP\fIBIND_ADDRESS\fP:\fR]\fP\fIPORT\fP:\fIHOST\fP:\fIHOSTPORT\fP
+.B \-U \fR[\fP\fIBIND_ADDRESS\fP:\fR]\fP\fIPORT\fP:\fIHOST\fP:\fIHOSTPORT\fP
 .TQ
 .B \-\-udp\-forward=\fR[\fP\fIBIND_ADDRESS\fP:\fR]\fP\fIPORT\fP:\fIHOST\fP:\fIHOSTPORT\fP
 Experimental.  Forward UDP datagrams: datagrams sent to \fIPORT\fP on
@@ -259,7 +259,7 @@ forwarded.  Only UDP is forwarded, and only from client to server
 
 .TP
 .B \-\-fragment\-parity={auto|always|never}
-Experimental.  When a datagram forwarded with \fB\-L\fP has to be
+Experimental.  When a datagram forwarded with \fB\-U\fP has to be
 fragmented, mosh can send one extra parity fragment for every eight
 fragments or fewer, so that the datagram survives the loss of any one
 fragment in each such group.  This makes large datagrams considerably
@@ -278,6 +278,8 @@ and \fBnever\fP override this (\fB\-\-no\-fragment\-parity\fP also
 means \fBnever\fP).
 
 .TP
+.B \-L \fR[\fP\fIBIND_ADDRESS\fP:\fR]\fP\fIPORT\fP:\fIHOST\fP:\fIHOSTPORT\fP
+.TQ
 .B \-\-tcp\-forward=\fR[\fP\fIBIND_ADDRESS\fP:\fR]\fP\fIPORT\fP:\fIHOST\fP:\fIHOSTPORT\fP
 Experimental.  Forward TCP connections: a connection made to
 \fIPORT\fP on the local machine is carried inside the mosh session and
@@ -295,7 +297,7 @@ with an older server, connections are refused.
 
 .TP
 .B \-\-tcp\-tun
-Experimental.  Use a TUN network device for \fB\-\-tcp\-forward\fP
+Experimental.  Use a TUN network device for \fB\-L\fP
 where possible, so that the operating system's own TCP implementation
 carries forwarded connections rather than the simpler one built into
 mosh.  This needs Linux and the CAP_NET_ADMIN capability (for

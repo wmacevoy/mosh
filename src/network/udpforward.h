@@ -43,8 +43,8 @@
 #include "src/network/sidechannel.h"
 
 /*
- * UDP port forwarding over the mosh side channel ("-L", in the manner
- * of ssh's TCP forwarding).
+ * UDP port forwarding over the mosh side channel ("-U", in the manner
+ * of ssh's "-L" for TCP).
  *
  * The client listens on a local UDP port.  Each datagram it receives is
  * sent to the server over the side channel, and the server re-sends it

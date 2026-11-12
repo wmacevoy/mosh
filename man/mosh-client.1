@@ -22,8 +22,8 @@ MOSH_KEY=KEY
 .B mosh-client 
 [\-v]
 [\-L \fR[\fP\fIBIND\fP:\fR]\fP\fIPORT\fP:\fIHOST\fP:\fIHOSTPORT\fP]
-[\-T \fR[\fP\fIBIND\fP:\fR]\fP\fIPORT\fP:\fIHOST\fP:\fIHOSTPORT\fP]
-[\-t]
+[\-U \fR[\fP\fIBIND\fP:\fR]\fP\fIPORT\fP:\fIHOST\fP:\fIHOSTPORT\fP]
+[\-w]
 [\-F auto|always|never]
 IP PORT
 .br
@@ -51,14 +51,12 @@ For constructing new setup wrappers for remote execution facilities
 other than SSH, it may be necessary to invoke \fBmosh-client\fP
 directly.
 
-The \-L option forwards UDP datagrams from a local port through the
-session, as described in
+The \-L option forwards TCP connections made to a local port through
+the session, and the \-U option forwards UDP datagrams, as described in
 .BR mosh (1).
 \fBmosh-server\fP must be given the same specifications in the same order.
-The \-T and \-t options do the same for TCP connections, as described
-under \fB\-\-tcp\-forward\fP and \fB\-\-tcp\-tun\fP in
-.BR mosh (1).
-The \-F option takes the mode described under \fB\-\-fragment\-parity\fP.
+The \-w option is \fB\-\-tcp\-tun\fP, and the \-F option takes the mode
+described under \fB\-\-fragment\-parity\fP.
 
 With the \-c option, \fBmosh-client\fP instead prints the number of colors
 of the terminal given by the TERM environment variable.

@@ -85,7 +85,7 @@ static void print_usage( FILE* file, const char* argv0 )
 {
   print_version( file );
   fprintf( file,
-           "\nUsage: %s [-# 'ARGS'] [-L [BIND:]PORT:HOST:HOSTPORT] [-T [BIND:]PORT:HOST:HOSTPORT] [-t]\n"
+           "\nUsage: %s [-# 'ARGS'] [-L [BIND:]PORT:HOST:HOSTPORT] [-U [BIND:]PORT:HOST:HOSTPORT] [-w]\n"
            "       [-F auto|always|never] IP PORT\n"
            "       %s -c\n",
            argv0,
@@ -131,7 +131,7 @@ int main( int argc, char* argv[] )
   }
 
   int opt;
-  while ( ( opt = getopt( argc, argv, "#:cvL:T:tF:" ) ) != -1 ) {
+  while ( ( opt = getopt( argc, argv, "#:cvL:U:wF:" ) ) != -1 ) {
     switch ( opt ) {
       case '#':
         // Ignore the original arguments to mosh wrapper
@@ -144,14 +144,14 @@ int main( int argc, char* argv[] )
         verbose++;
         break;
       case 'L':
+        /* forward TCP connections made to a local port, as ssh's -L does */
+        tcp_forwards.push_back( std::string( optarg ) );
+        break;
+      case 'U':
         /* forward UDP datagrams sent to a local port */
         udp_forwards.push_back( std::string( optarg ) );
         break;
-      case 'T':
-        /* forward TCP connections made to a local port */
-        tcp_forwards.push_back( std::string( optarg ) );
-        break;
-      case 't':
+      case 'w':
         /* use a TUN device for TCP forwarding where possible */
         tcp_tun = true;
         break;

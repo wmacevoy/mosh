@@ -122,7 +122,7 @@ qq{Usage: $0 [options] [--] [user@]host [command...]
         --bind-server={ssh|any|IP}  ask the server to reply from an IP address
                                        (default: "ssh")
 
--L [BIND_ADDRESS:]PORT:HOST:HOSTPORT
+-U [BIND_ADDRESS:]PORT:HOST:HOSTPORT
         --udp-forward=[BIND_ADDRESS:]PORT:HOST:HOSTPORT
                              forward UDP datagrams sent to local PORT
                                 to HOST:HOSTPORT as seen from the server
@@ -135,9 +135,11 @@ qq{Usage: $0 [options] [--] [user@]host [command...]
                                 (default: "auto", when the network is
                                 losing enough to make it worthwhile)
 
+-L [BIND_ADDRESS:]PORT:HOST:HOSTPORT
         --tcp-forward=[BIND_ADDRESS:]PORT:HOST:HOSTPORT
                              forward TCP connections made to local PORT
-                                to HOST:HOSTPORT as seen from the server
+                                to HOST:HOSTPORT as seen from the server,
+                                as "ssh -L" does
                                 (may be repeated; needs support on the server)
         --tcp-tun            use a TUN device for TCP forwarding where
                                 possible (needs CAP_NET_ADMIN; connect to
@@ -200,8 +202,8 @@ GetOptions( 'client=s' => \$client,
 	    'version' => \$version,
 	    'fake-proxy!' => \my $fake_proxy,
 	    'bind-server=s' => \$bind_ip,
-	    'udp-forward|L=s' => \@udp_forwards,
-	    'tcp-forward=s' => \@tcp_forwards,
+	    'udp-forward|U=s' => \@udp_forwards,
+	    'tcp-forward|L=s' => \@tcp_forwards,
 	    'tcp-tun!' => \$tcp_tun,
 	    'fragment-parity=s' => \$fragment_parity,
 	    'no-fragment-parity' => sub { $fragment_parity = 'never' },
@@ -429,15 +431,15 @@ if ( $pid == 0 ) { # child
   }
 
   for ( @udp_forwards ) {
-    push @server, ( '-L', $_ );
+    push @server, ( '-U', $_ );
   }
 
   for ( @tcp_forwards ) {
-    push @server, ( '-T', $_ );
+    push @server, ( '-L', $_ );
   }
 
   if ( $tcp_tun ) {
-    push @server, '-t';
+    push @server, '-w';
   }
 
   if ( defined $fragment_parity ) {
@@ -518,8 +520,8 @@ if ( $pid == 0 ) { # child
   $ENV{ 'MOSH_KEY' } = $key;
   $ENV{ 'MOSH_PREDICTION_DISPLAY' } = $predict;
   $ENV{ 'MOSH_NO_TERM_INIT' } = '1' if !$term_init;
-  exec {$client} ("$client", "-# @cmdline |", ( map { ( '-L', $_ ) } @udp_forwards ),
-		    ( map { ( '-T', $_ ) } @tcp_forwards ), ( $tcp_tun ? ( '-t' ) : () ),
+  exec {$client} ("$client", "-# @cmdline |", ( map { ( '-U', $_ ) } @udp_forwards ),
+		    ( map { ( '-L', $_ ) } @tcp_forwards ), ( $tcp_tun ? ( '-w' ) : () ),
 		    ( defined $fragment_parity ? ( '-F', $fragment_parity ) : () ), $ip, $port);
 }
 

@@ -26,8 +26,8 @@ new
 [\-p \fIPORT\fP[:\fIPORT2\fP]]
 [\-c \fICOLORS\fP]
 [\-L \fR[\fP\fIBIND\fP:\fR]\fP\fIPORT\fP:\fIHOST\fP:\fIHOSTPORT\fP]
-[\-T \fR[\fP\fIBIND\fP:\fR]\fP\fIPORT\fP:\fIHOST\fP:\fIHOSTPORT\fP]
-[\-t]
+[\-U \fR[\fP\fIBIND\fP:\fR]\fP\fIPORT\fP:\fIHOST\fP:\fIHOSTPORT\fP]
+[\-w]
 [\-F auto|always|never]
 [\-\- command...]
 .br
@@ -88,23 +88,23 @@ Locale-related environment variable to try as part of a fallback
 environment, if the startup environment does not specify a character
 .TP
 .B \-L \fR[\fP\fIBIND_ADDRESS\fP:\fR]\fP\fIPORT\fP:\fIHOST\fP:\fIHOSTPORT\fP
-Experimental.  Relay UDP datagrams that the client forwards (see
+Experimental.  Connect TCP connections that the client forwards (see
+\fB\-L\fP in
 .BR mosh (1))
 to \fIHOST\fP:\fIHOSTPORT\fP.  The client must be given the same
 specifications in the same order; the server ignores the
-\fIBIND\fP and \fIPORT\fP parts.
+\fIBIND_ADDRESS\fP and \fIPORT\fP parts.
 
 .TP
-.B \-T \fR[\fP\fIBIND_ADDRESS\fP:\fR]\fP\fIPORT\fP:\fIHOST\fP:\fIHOSTPORT\fP
-Experimental.  Connect TCP connections that the client forwards (see
-\fB\-\-tcp\-forward\fP in
+.B \-U \fR[\fP\fIBIND_ADDRESS\fP:\fR]\fP\fIPORT\fP:\fIHOST\fP:\fIHOSTPORT\fP
+Experimental.  Relay UDP datagrams that the client forwards (see
+\fB\-U\fP in
 .BR mosh (1))
-to \fIHOST\fP:\fIHOSTPORT\fP.  The client must be given the same
-specifications in the same order.
+to \fIHOST\fP:\fIHOSTPORT\fP, in the same way.
 
 .TP
-.B \-t
-Experimental.  Use a TUN device for \fB\-T\fP where possible (see
+.B \-w
+Experimental.  Use a TUN device for \fB\-L\fP where possible (see
 \fB\-\-tcp\-tun\fP in
 .BR mosh (1)).
 With \fB\-v\fP, the server reports how each forward is provided.
@@ -112,7 +112,7 @@ With \fB\-v\fP, the server reports how each forward is provided.
 .TP
 .B \-F \fIMODE\fP
 Experimental.  Whether to add parity to the fragments of large
-datagrams sent to the client with \fB\-L\fP: \fBauto\fP (the default),
+datagrams sent to the client with \fB\-U\fP: \fBauto\fP (the default),
 \fBalways\fP or \fBnever\fP (see \fB\-\-fragment\-parity\fP in
 .BR mosh (1)).
 
