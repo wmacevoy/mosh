@@ -14,7 +14,7 @@ curl -fsSL https://raw.githubusercontent.com/wmacevoy/mosh/master/scripts/instal
 
 That installs the newest release. The `install.sh` attached to this release installs this one.
 
-Windows: unpack the `msys2` zip. It contains `mosh-client.exe` and the MSYS2 libraries it needs; the `mosh` wrapper script also needs `perl` and `ssh`.
+Windows: unpack the `msys2` zip. It contains `mosh-client.exe`, `mosh-server.exe` and the MSYS2 libraries they need; the `mosh` wrapper script also needs `perl` and `ssh`. To use a Windows machine as the server, allow inbound UDP to `mosh-server.exe` in its firewall.
 
 Everything else: build from the source package.
 

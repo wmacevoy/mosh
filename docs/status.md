@@ -46,7 +46,7 @@ GitHub Actions runs these on each push:
 | Job | What it does |
 |---|---|
 | `build` | Builds with warnings as errors and runs the test suite on Ubuntu 22.04, Ubuntu 24.04 and macOS, and on Ubuntu with a second cryptography library |
-| `msys2` | Builds on Windows in MSYS2, runs the unit tests there, and checks that the packaged client starts outside MSYS2 |
+| `msys2` | Builds on Windows in MSYS2, runs the unit tests there, and checks that the packaged client and server run a forwarding session outside MSYS2 |
 | `sanitizers` | Runs the whole suite under AddressSanitizer and UndefinedBehaviorSanitizer, with leak checking for the forwarding tests |
 | `fuzz` | Runs each fuzzer for a minute with libFuzzer, starting from a saved set of inputs |
 | CodeQL | Static analysis of the C++, also run weekly |

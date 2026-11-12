@@ -32,9 +32,16 @@ come with the operating system (on macOS, no Homebrew).
   release.
 
 **Windows.** Download the `msys2` zip from the release page and unpack it. It
-holds `mosh-client.exe` and the MSYS2 libraries it needs. The `mosh` wrapper
-beside it is a Perl script that runs `ssh`, so it needs both of those, for
-instance from an MSYS2 installation.
+holds `mosh-client.exe`, `mosh-server.exe` and the MSYS2 libraries they need.
+The `mosh` wrapper beside them is a Perl script that runs `ssh`, so it needs
+both of those, for instance from an MSYS2 installation.
+
+A Windows machine can be the server too (from release 1.4.0-pf.2): start
+`mosh-server.exe` there, for instance over Windows's own OpenSSH server.
+Windows blocks incoming UDP unless told otherwise, so allow it for
+`mosh-server.exe` in the firewall first. The Windows server has only been
+tested with forwards and no terminal (`-N`), talking to a client on the same
+machine.
 
 **Everything else.** Build from source, below.
 

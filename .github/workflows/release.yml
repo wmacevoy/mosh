@@ -8,7 +8,8 @@ name: Release
 #   mosh-VERSION-linux-aarch64.tar.gz      (as old as Ubuntu 22.04's)
 #   mosh-VERSION-macos-universal.tar.gz  for Apple Silicon and Intel, needing
 #                                          only what ships with macOS 11+
-#   mosh-VERSION-msys2.zip               Windows client with the MSYS2 runtime
+#   mosh-VERSION-msys2.zip               Windows client and server with the
+#                                          MSYS2 runtime libraries they need
 #   install.sh                           installer for the Linux and macOS packages
 #   SHA256SUMS
 #
@@ -236,17 +237,22 @@ jobs:
       run: |
         name=mosh-${{ needs.source.outputs.version }}-msys2
         mkdir -p stage/$name dist
-        cp src/frontend/mosh-client.exe scripts/mosh COPYING README.md stage/$name/
-        strip stage/$name/mosh-client.exe
-        ldd src/frontend/mosh-client.exe | awk '$3 ~ /^\/usr\/bin\// { print $3 }' | sort -u | xargs -I{} cp {} stage/$name/
+        cp src/frontend/mosh-client.exe src/frontend/mosh-server.exe scripts/mosh COPYING README.md stage/$name/
+        strip stage/$name/mosh-client.exe stage/$name/mosh-server.exe
+        ldd src/frontend/mosh-client.exe src/frontend/mosh-server.exe \
+          | awk '$3 ~ /^\/usr\/bin\// { print $3 }' | sort -u | xargs -I{} cp {} stage/$name/
         ls -l stage/$name
         (cd stage && zip -r ../dist/$name.zip $name)
 
-    - name: "check that the packaged client runs on its own"
+    # From outside MSYS2, as on a machine without it: both programs
+    # start, and a session between them forwards a connection.
+    - name: "check that the packaged programs work on their own"
       shell: pwsh
       run: |
-        $dir = Get-ChildItem stage -Directory | Select-Object -First 1
-        & "$($dir.FullName)\mosh-client.exe" --version
+        $dir = (Get-ChildItem stage -Directory | Select-Object -First 1).FullName
+        & "$dir\mosh-client.exe" --version
+        & "$dir\mosh-server.exe" --version
+        python src\tests\headless-smoke.py "$dir\mosh-server.exe" "$dir\mosh-client.exe"
 
     - uses: actions/upload-artifact@v4
       with:
