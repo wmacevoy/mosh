@@ -28,6 +28,7 @@ mosh maintainers and is not part of any mosh release. See
 | `-R [bind:]port:host:hostport` | TCP connections made to a port on **the server**, to `host:hostport` as seen from your machine | `ssh -R` |
 | `-LU [bind:]port:host:hostport` | UDP datagrams sent to a port on **your machine**, to `host:hostport` as seen from the server | none |
 | `-RU [bind:]port:host:hostport` | UDP datagrams sent to a port on **the server**, to `host:hostport` as seen from your machine | none |
+| `-N` | No terminal: just hold the session and its forwards open | `ssh -N` |
 | `--fragment-parity=MODE` | Whether large UDP datagrams get parity so they survive a lost fragment: `auto` (the default), `always` or `never` | none |
 
 ## Why

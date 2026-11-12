@@ -78,6 +78,10 @@ private:
   bool clean_shutdown;
   unsigned int verbose;
 
+  /* No terminal: just hold the session and its forwards open, like "ssh -N". */
+  bool headless;
+  bool announced;
+
   void main_init( void );
   void process_network_input( void );
   bool process_user_input( int fd );
@@ -104,18 +108,19 @@ public:
              const std::vector<std::string>& s_tcp_forwards = std::vector<std::string>(),
              const std::string& s_fragment_parity = "auto",
              const std::vector<std::string>& s_tcp_remote_forwards = std::vector<std::string>(),
-             const std::vector<std::string>& s_udp_remote_forwards = std::vector<std::string>() )
+             const std::vector<std::string>& s_udp_remote_forwards = std::vector<std::string>(),
+             bool s_headless = false )
     : ip( s_ip ? s_ip : "" ), port( s_port ? s_port : "" ), key( s_key ? s_key : "" ), escape_key( 0x1E ),
       escape_pass_key( '^' ), escape_pass_key2( '^' ), escape_requires_lf( false ), escape_key_help( L"?" ),
       saved_termios(), raw_termios(), window_size(), local_framebuffer( 1, 1 ), new_state( 1, 1 ), overlays(),
-      network(), display( true ) /* use TERM environment var to initialize display */,
+      network(), display( !s_headless ) /* use TERM environment var to initialize display */,
       udp_forwards( s_udp_forwards ), udp_remote_forwards( s_udp_remote_forwards ),
       tcp_forwards( s_tcp_forwards ),
       tcp_remote_forwards( s_tcp_remote_forwards ),
       fragment_parity( s_fragment_parity ), forwarder(),
       connecting_notification(),
       repaint_requested( false ), lf_entered( false ), quit_sequence_started( false ), clean_shutdown( false ),
-      verbose( s_verbose )
+      verbose( s_verbose ), headless( s_headless ), announced( false )
   {
     if ( predict_mode ) {
       if ( !strcmp( predict_mode, "always" ) ) {

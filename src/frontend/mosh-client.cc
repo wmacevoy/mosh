@@ -86,7 +86,7 @@ static void print_usage( FILE* file, const char* argv0 )
   print_version( file );
   fprintf( file,
            "\nUsage: %s [-# 'ARGS'] [-L|-R|-LU|-RU [BIND:]PORT:HOST:HOSTPORT]\n"
-           "       [-F auto|always|never] IP PORT\n"
+           "       [-F auto|always|never] [-N] IP PORT\n"
            "       %s -c\n",
            argv0,
            argv0 );
@@ -111,6 +111,7 @@ int main( int argc, char* argv[] )
   unsigned int verbose = 0;
   std::vector<std::string> udp_forwards, udp_remote_forwards, tcp_forwards, tcp_remote_forwards;
   std::string fragment_parity = "auto";
+  bool headless = false;
   /* For security, make sure we don't dump core */
   Crypto::disable_dumping_core();
 
@@ -130,7 +131,7 @@ int main( int argc, char* argv[] )
   }
 
   int opt;
-  while ( ( opt = getopt( argc, argv, "#:cvL:R:F:" ) ) != -1 ) {
+  while ( ( opt = getopt( argc, argv, "#:cvL:R:F:N" ) ) != -1 ) {
     switch ( opt ) {
       case '#':
         // Ignore the original arguments to mosh wrapper
@@ -168,6 +169,10 @@ int main( int argc, char* argv[] )
       case 'F':
         /* when to protect fragmented UDP datagrams with parity */
         fragment_parity = optarg;
+        break;
+      case 'N':
+        /* no terminal: hold the session and its forwards open until told to stop, like "ssh -N" */
+        headless = true;
         break;
       default:
         print_usage( stderr, argv[0] );
@@ -230,7 +235,8 @@ int main( int argc, char* argv[] )
                       tcp_forwards,
                       fragment_parity,
                       tcp_remote_forwards,
-                      udp_remote_forwards );
+                      udp_remote_forwards,
+                      headless );
     client.init();
 
     try {
@@ -252,7 +258,11 @@ int main( int argc, char* argv[] )
     success = false;
   }
 
-  printf( "[mosh is exiting.]\n" );
+  if ( headless ) {
+    fputs( "mosh: exiting.\n", stderr ); /* (standard output is not ours to write on) */
+  } else {
+    printf( "[mosh is exiting.]\n" );
+  }
 
   return !success;
 }

@@ -81,6 +81,11 @@ void STMClient::resume( void )
 
 void STMClient::init( void )
 {
+  if ( headless ) {
+    /* nothing of the terminal's to look at or change */
+    return;
+  }
+
   if ( !is_utf8_locale() ) {
     LocaleVar native_ctype = get_ctype();
     std::string native_charset( locale_charset() );
@@ -203,18 +208,20 @@ void STMClient::init( void )
 
 void STMClient::shutdown( void )
 {
-  /* Restore screen state */
-  overlays.get_notification_engine().set_notification_string( std::wstring( L"" ) );
-  overlays.get_notification_engine().server_heard( timestamp() );
-  overlays.set_title_prefix( std::wstring( L"" ) );
-  output_new_frame();
+  if ( !headless ) {
+    /* Restore screen state */
+    overlays.get_notification_engine().set_notification_string( std::wstring( L"" ) );
+    overlays.get_notification_engine().server_heard( timestamp() );
+    overlays.set_title_prefix( std::wstring( L"" ) );
+    output_new_frame();
 
-  /* Restore terminal and terminal-driver state */
-  swrite( STDOUT_FILENO, display.close().c_str() );
+    /* Restore terminal and terminal-driver state */
+    swrite( STDOUT_FILENO, display.close().c_str() );
 
-  if ( tcsetattr( STDIN_FILENO, TCSANOW, &saved_termios ) < 0 ) {
-    perror( "tcsetattr" );
-    exit( 1 );
+    if ( tcsetattr( STDIN_FILENO, TCSANOW, &saved_termios ) < 0 ) {
+      perror( "tcsetattr" );
+      exit( 1 );
+    }
   }
 
   if ( still_connecting() ) {
@@ -244,7 +251,12 @@ void STMClient::main_init( void )
   sel.add_signal( SIGCONT );
 
   /* get initial window size */
-  if ( ioctl( STDIN_FILENO, TIOCGWINSZ, &window_size ) < 0 ) {
+  if ( headless ) {
+    /* there is no window; tell the server something ordinary */
+    memset( &window_size, 0, sizeof( window_size ) );
+    window_size.ws_col = 80;
+    window_size.ws_row = 24;
+  } else if ( ioctl( STDIN_FILENO, TIOCGWINSZ, &window_size ) < 0 ) {
     perror( "ioctl TIOCGWINSZ" );
     return;
   }
@@ -254,8 +266,10 @@ void STMClient::main_init( void )
   new_state = Terminal::Framebuffer( 1, 1 );
 
   /* initialize screen */
-  std::string init = display.new_frame( false, local_framebuffer, local_framebuffer );
-  swrite( STDOUT_FILENO, init.data(), init.size() );
+  if ( !headless ) {
+    std::string init = display.new_frame( false, local_framebuffer, local_framebuffer );
+    swrite( STDOUT_FILENO, init.data(), init.size() );
+  }
 
   /* open network */
   Network::UserStream blank;
@@ -287,6 +301,16 @@ void STMClient::main_init( void )
 void STMClient::output_new_frame( void )
 {
   if ( !network ) { /* clean shutdown even when not initialized */
+    return;
+  }
+
+  if ( headless ) {
+    /* Nothing to draw on.  Say once, where a script can see it, that the session is up. */
+    if ( !announced && !still_connecting() && ( !forwarder || network->sidechannel_ready() ) ) {
+      announced = true;
+      fputs( forwarder ? "mosh: connected; forwarding.\n" : "mosh: connected.\n", stderr );
+      fflush( stderr );
+    }
     return;
   }
 
@@ -480,7 +504,9 @@ bool STMClient::main( void )
       for ( std::vector<int>::const_iterator it = fd_list.begin(); it != fd_list.end(); it++ ) {
         sel.add_fd( *it );
       }
-      sel.add_fd( STDIN_FILENO );
+      if ( !headless ) {
+        sel.add_fd( STDIN_FILENO );
+      }
       std::vector<int> forward_fds;
       if ( forwarder ) {
         forward_fds = forwarder->fds();
@@ -519,7 +545,7 @@ bool STMClient::main( void )
         forwarder->tick();
       }
 
-      if ( sel.read( STDIN_FILENO )
+      if ( !headless && sel.read( STDIN_FILENO )
            && !process_user_input( STDIN_FILENO ) ) { /* input from the user needs to be fed to the network */
         if ( !network->has_remote_addr() ) {
           break;
@@ -529,11 +555,11 @@ bool STMClient::main( void )
         }
       }
 
-      if ( sel.signal( SIGWINCH ) && !process_resize() ) { /* resize */
+      if ( !headless && sel.signal( SIGWINCH ) && !process_resize() ) { /* resize */
         return false;
       }
 
-      if ( sel.signal( SIGCONT ) ) {
+      if ( !headless && sel.signal( SIGCONT ) ) {
         resume();
       }
 

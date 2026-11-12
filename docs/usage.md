@@ -176,6 +176,34 @@ in the group can be rebuilt.
 You should not normally need to set this. In `auto` it can take a few seconds
 after the network gets worse for parity to switch on.
 
+## `-N`: forwards without a terminal
+
+```
+mosh -N -L 8080:localhost:80 user@server
+```
+
+With `-N`, mosh does not use the terminal at all. It keeps the session and
+its forwards open until you interrupt it (Ctrl-C) or kill it, like `ssh -N`.
+
+- It needs no terminal and reads no input, so it can run in the background
+  (`mosh -N ... &`), from a script, or under another program.
+- It prints `mosh: connected; forwarding.` on standard error once the
+  forwards can be used. A program starting it can wait for that line.
+- On the server it runs a command that just waits. Give a command to run
+  something else for the life of the session: `mosh -N -L ... server -- some-daemon`.
+  The session ends when that command does.
+
+## Losing the network
+
+A mosh session survives losing contact with the server, for as long as it
+takes, and so do the connections forwarded through it. While the session is
+out of contact a forwarded TCP connection simply waits; nothing times out at
+mosh's end. When contact returns, whatever was waiting is sent at once.
+
+What can still end a connection during an outage is the programs using it:
+an application or server with its own inactivity or keepalive timeout will
+still apply it.
+
 ## Running the helper programs directly
 
 The `mosh` wrapper passes the forwarding options to both ends. If you start
@@ -189,6 +217,7 @@ in the same order:
 | `-LU spec`, `--udp-forward=spec` | `-LU spec` |
 | `-RU spec`, `--udp-remote-forward=spec` | `-RU spec` |
 | `--fragment-parity=mode` | `-F mode` |
+| `-N` | `-N` (client only; the server is given a command that waits) |
 
 ## Troubleshooting
 
@@ -199,8 +228,8 @@ the session has not finished connecting yet;
 or the target itself refused, in which case the refusal is passed back.
 
 **A forward stops when I close the terminal session.**
-Forwards live exactly as long as the mosh session. There is no equivalent of
-`ssh -N` or `ssh -f`.
+Forwards live exactly as long as the mosh session. Use `-N` for a session
+that is nothing but forwards, and run it in the background if you like.
 
 **The listening port is already in use.**
 `mosh-client` (for `-L`, `-LU`) or `mosh-server` (for `-R`, `-RU`) exits with a

@@ -8,6 +8,8 @@ forward of each kind, and sends traffic through each of them:
     -L   TCP, the client listens       -LU  UDP, the client listens
     -R   TCP, the server listens       -RU  UDP, the server listens
 
+and then again without a terminal (-N).
+
 usage: forward-e2e.py MOSH_SERVER MOSH_CLIENT
 """
 
@@ -177,6 +179,40 @@ if failures:
     sys.stderr.write(bytes(screen).decode("latin-1")[-2000:] + "\n")
     finish()
 
+
+def headless():
+    """The same with -N: no terminal, nothing read, nothing drawn, until interrupted."""
+    port = free_port(socket.SOCK_STREAM)
+    forward = ["-L", "%d:%s" % (port, tcp_to)]
+    started = subprocess.run(
+        [server_path, "new", "-i", "127.0.0.1"] + forward + ["--", "/bin/sh", "-c", "while :; do sleep 1000; done"],
+        env=env, stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=30)
+    match = re.search(r"MOSH CONNECT (\d+) (\S+)", started.stdout)
+    if not match:
+        check("-N   mosh-server starts", False)
+        return
+    quiet = dict(env, MOSH_KEY=match.group(2))
+    quiet.pop("TERM", None)  # no terminal, so no reason to have one of these either
+    client = subprocess.Popen([client_path, "-N"] + forward + ["127.0.0.1", match.group(1)], env=quiet,
+                              stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    said = []
+    threading.Thread(target=lambda: said.extend(l.decode("latin-1") for l in client.stderr), daemon=True).start()
+    deadline = time.time() + 30
+    while time.time() < deadline and not any("connected; forwarding" in l for l in said):
+        time.sleep(0.05)
+    check("-N   says when the forwards are up", any("connected; forwarding" in l for l in said))
+    try:
+        check("-N   TCP connection is forwarded", tcp_round_trip(port, b"no terminal") == b"no terminal")
+    except OSError:
+        check("-N   TCP connection is forwarded", False)
+    client.send_signal(signal.SIGINT)
+    try:
+        status = client.wait(20)
+    except subprocess.TimeoutExpired:
+        status = None
+        client.kill()
+    check("-N   stops cleanly when interrupted, having drawn nothing", status == 0 and client.stdout.read() == b"")
+
 # ---- TCP
 
 
@@ -251,6 +287,8 @@ for option in ("-LU", "-RU"):
     for size in (1200, 5000, 9000):  # (some systems won't send a much larger datagram at all)
         check("%-3s  %5d-byte datagram (%s)" % (option, size, "whole" if size <= 1200 else "in fragments"),
               udp_round_trip(ports[option], blob(size, size), 10))
+
+headless()
 
 # ---- and the terminal has not suffered
 

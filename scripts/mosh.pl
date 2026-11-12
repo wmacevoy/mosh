@@ -85,6 +85,8 @@ my @tcp_remote_forwards = ();
 
 my $fragment_parity = undef;
 
+my $headless = 0;
+
 my $use_remote_ip = 'proxy';
 
 my $family = 'prefer-inet';
@@ -159,6 +161,10 @@ qq{Usage: $0 [options] [--] [user@]host [command...]
                                 as "ssh -R" does
                                 (may be repeated; needs support on the server)
 
+-N                           no terminal: just keep the session, and the
+                                forwards given with it, open until
+                                interrupted (as "ssh -N" does)
+
         --ssh=COMMAND        ssh command to run when setting up session
                                 (example: "ssh -p 2222")
                                 (default: "ssh")
@@ -198,6 +204,9 @@ sub predict_check {
   }
 }
 
+# -n and -N are different options.
+Getopt::Long::Configure( 'no_ignore_case' );
+
 GetOptions( 'client=s' => \$client,
 	    'server=s' => \$server,
 	    'predict=s' => \$predict,
@@ -222,6 +231,7 @@ GetOptions( 'client=s' => \$client,
 	    'tcp-forward|L=s' => \@tcp_forwards,
 	    'tcp-remote-forward|R=s' => \@tcp_remote_forwards,
 	    'fragment-parity=s' => \$fragment_parity,
+	    'N' => \$headless,
 	    'no-fragment-parity' => sub { $fragment_parity = 'never' },
 	    'experimental-remote-ip=s' => \$use_remote_ip) or die $usage;
 
@@ -369,15 +379,24 @@ if ( ! defined $fake_proxy ) {
 }
 
 # Count colors
-open COLORCOUNT, '-|', $client, ('-c') or die "Can't count colors: $!\n";
 my $colors = "";
-{
-  local $/ = undef;
-  $colors = <COLORCOUNT>;
-}
-close COLORCOUNT or die;
+if ( $headless ) {
+  # There is no terminal to have any, and perhaps no TERM to ask about.
+  $colors = 0;
 
-chomp $colors;
+  # Nor is there anything to run in it.  The session lasts as long as
+  # the command does, so unless one was given, give one that waits.
+  @command = ( 'sh', '-c', 'while :; do sleep 86400; done' ) unless scalar @command;
+} else {
+  open COLORCOUNT, '-|', $client, ('-c') or die "Can't count colors: $!\n";
+  {
+    local $/ = undef;
+    $colors = <COLORCOUNT>;
+  }
+  close COLORCOUNT or die;
+
+  chomp $colors;
+}
 
 if ( (not defined $colors)
     or $colors !~ m{^[0-9]+$}
@@ -544,7 +563,8 @@ if ( $pid == 0 ) { # child
 		    ( map { ( '-RU', $_ ) } @udp_remote_forwards ),
 		    ( map { ( '-L', $_ ) } @tcp_forwards ),
 		    ( map { ( '-R', $_ ) } @tcp_remote_forwards ),
-		    ( defined $fragment_parity ? ( '-F', $fragment_parity ) : () ), $ip, $port);
+		    ( defined $fragment_parity ? ( '-F', $fragment_parity ) : () ),
+		    ( $headless ? ( '-N' ) : () ), $ip, $port);
 }
 
 sub shell_quote { join ' ', map {(my $a = $_) =~ s/'/'\\''/g; "'$a'"} @_ }

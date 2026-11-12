@@ -302,8 +302,10 @@ option may be repeated.
 The connection's TCP segments travel as individual datagrams, which
 mosh itself does not retransmit, so a forwarded connection survives
 roaming and outages as the terminal session does and recovers from
-loss as an ordinary TCP connection would.  Forwarding lasts only as
-long as the terminal session, and needs a server that supports it;
+loss as an ordinary TCP connection would.  A forwarded connection is
+never given up on because the session has lost contact with the
+server, however long that lasts.  Forwarding lasts only as
+long as the session (see \fB\-N\fP for one without a terminal), and needs a server that supports it;
 with an older server, connections are refused.
 
 .TP
@@ -319,6 +321,17 @@ inside the mosh session and connected by the client to
 use the forward.  The option may be repeated.  Connections made before
 the client has connected, or while the session is shutting down, are
 refused.
+
+.TP
+.B \-N
+Experimental.  Do not use the terminal: just keep the session, and the
+forwards given with it, open until interrupted, as \fBssh \-N\fP does.
+\fBmosh\fP then needs no terminal and reads no input, so it can be run
+in the background or by another program.  It prints
+\(lqmosh: connected; forwarding.\(rq on standard error once the forwards
+can be used.  The session lasts until \fBmosh\fP is interrupted or
+killed, or the command on the server ends; if no \fIcommand\fP is
+given, one that simply waits is run there.
 
 .TP
 .B \-\-experimental\-remote\-ip={proxy|local|remote}
