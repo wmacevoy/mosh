@@ -248,7 +248,7 @@ def udp_round_trip(port, data, tries):
 
 for option in ("-LU", "-RU"):
     check("%-3s  UDP datagram is forwarded, and the reply returned" % option, udp_round_trip(ports[option], b"ping", 40))
-    for size in (1200, 5000, 40000):
+    for size in (1200, 5000, 9000):  # (some systems won't send a much larger datagram at all)
         check("%-3s  %5d-byte datagram (%s)" % (option, size, "whole" if size <= 1200 else "in fragments"),
               udp_round_trip(ports[option], blob(size, size), 10))
 

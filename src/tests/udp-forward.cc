@@ -326,6 +326,23 @@ static int udp_socket( uint16_t& port )
   return fd;
 }
 
+/* Some systems (macOS, the BSDs) won't send a UDP datagram anywhere near the protocol's limit. */
+static size_t largest_datagram( void )
+{
+  uint16_t port;
+  const int receiver = udp_socket( port );
+  const int sender = udp_socket( port );
+  struct sockaddr_in to;
+  socklen_t len = sizeof( to );
+  CHECK( getsockname( receiver, reinterpret_cast<struct sockaddr*>( &to ), &len ) == 0 );
+  const std::string most( 65507, 'x' );
+  const bool ok = sendto( sender, most.data(), most.size(), 0, reinterpret_cast<struct sockaddr*>( &to ), len )
+                  == static_cast<ssize_t>( most.size() );
+  close( sender );
+  close( receiver );
+  return ok ? most.size() : 9000;
+}
+
 static bool readable( int fd, int timeout_ms = 2000 )
 {
   struct pollfd p;
@@ -455,8 +472,8 @@ static void test_relay( void )
   server.sidechannel_recv( to_server.sent[crossed + 1] );
   CHECK( !readable( target, 50 ) && server.partial_count() == 0 );
 
-  /* the largest datagram there is, there and back */
-  const std::string huge = varied( 65507 );
+  /* the largest datagram there is (or that this system will send), there and back */
+  const std::string huge = varied( largest_datagram() );
   send_to_port( app[0], listen_port, huge );
   CHECK( readable( listen_fd ) );
   client.read_fd( listen_fd );
@@ -548,7 +565,8 @@ static void test_relay( void )
     bool parity;
   } cases[] = { { 0.0, &big, false },  { 0.0, &huge, false }, /* a clean path: never */
                 { 0.01, &two, false }, { 0.01, &big, true },  /* 1%: from three fragments up */
-                { 0.05, &two, true },  { 0.001, &big, false }, { 0.001, &huge, true } };
+                { 0.05, &two, true },  { 0.001, &big, false },
+                { 0.001, &huge, huge.size() > 21 * 1200 } }; /* 0.1%: from 21 fragments up */
   for ( size_t i = 0; i < sizeof( cases ) / sizeof( cases[0] ); i++ ) {
     const uint64_t parity_before = client.get_with_parity();
     to_server.loss = cases[i].loss;
