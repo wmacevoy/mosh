@@ -49,7 +49,7 @@ yes_if() { if "$@" >/dev/null 2>&1; then echo ok; else echo no; fi; }
 
 cd "$work" || exit 99
 
-$mocp -q -r src "127.0.0.1:$work/there/" 2>"$work/err"
+$mocp -q -r src "127.0.0.1:$work/there/"
 check "a directory is copied to the server" "$(yes_if diff -r src there/src)"
 
 said=$($mocp -r src "127.0.0.1:$work/there/" 2>&1)
@@ -66,7 +66,7 @@ $mocp -q "127.0.0.1:$work/nothing-here" back 2>/dev/null
 check "a missing file is an error, reported here" "$([ $? -eq 1 ] && echo ok)"
 
 # kept up to date
-$mocp -q -r --auto --delete --interval=0.2 "127.0.0.1:$work/src/." "$work/mirror" 2>/dev/null &
+$mocp -q -r --auto --delete --interval=0.2 "127.0.0.1:$work/src/." "$work/mirror" &
 auto=$!
 wait_for() {
     n=0
