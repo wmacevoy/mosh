@@ -205,6 +205,27 @@ int main( int argc, char* argv[] )
     exit( 1 );
   }
 
+  /*
+   * How to reach the server if UDP will not get there: a command that
+   * starts "mosh-server relay" on it (through ssh, as a rule), given as
+   * its words separated by the character 0x1F so that no shell is needed
+   * to take it apart; and whether to use it when needed or from the start.
+   */
+  std::vector<std::string> relay_command;
+  if ( const char* command = getenv( "MOSH_RELAY_COMMAND" ) ) {
+    std::string word;
+    for ( const char* c = command; *c; c++ ) {
+      if ( *c == '\x1f' ) {
+        relay_command.push_back( word );
+        word.clear();
+      } else {
+        word.push_back( *c );
+      }
+    }
+    relay_command.push_back( word );
+  }
+  const std::string relay_mode( getenv( "MOSH_RELAY" ) ? getenv( "MOSH_RELAY" ) : "auto" );
+
   /* Read prediction preference */
   char* predict_mode = getenv( "MOSH_PREDICTION_DISPLAY" );
   /* can be NULL */
@@ -237,6 +258,9 @@ int main( int argc, char* argv[] )
                       tcp_remote_forwards,
                       udp_remote_forwards,
                       headless );
+    if ( relay_mode != "never" ) {
+      client.set_relay( relay_mode, relay_command );
+    }
     client.init();
 
     try {

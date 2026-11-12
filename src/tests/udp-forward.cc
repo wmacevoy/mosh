@@ -47,6 +47,7 @@
 #include <unistd.h>
 
 #include "src/network/forwarding.h"
+#include "src/network/relay.h"
 #include "src/network/udpforward.h"
 #include "src/util/timestamp.h"
 
@@ -626,6 +627,30 @@ static void test_relay( void )
   close( app[1] );
 }
 
+/* Datagrams on a stream, for the relay: each with its length before it. */
+static void test_relay_frames( void )
+{
+  const std::string a = "hello", b = "", c = varied( 65535 );
+  const std::string stream = relay_frame( a ) + relay_frame( b ) + relay_frame( c );
+  CHECK( stream.size() == 5 + 0 + 65535 + 3 * 2 );
+  CHECK( stream.substr( 0, 2 ) == std::string( "\x00\x05", 2 ) );
+
+  /* however the stream is cut up on the way, the same datagrams come out */
+  for ( size_t step = 1; step < 70000; step = step * 7 + 1 ) {
+    RelayFrameParser parser;
+    std::vector<std::string> out;
+    std::string datagram;
+    for ( size_t at = 0; at < stream.size(); at += step ) {
+      parser.append( stream.data() + at, std::min( step, stream.size() - at ) );
+      while ( parser.next( datagram ) ) {
+        out.push_back( datagram );
+      }
+    }
+    CHECK( out.size() == 3 && out[0] == a && out[1] == b && out[2] == c );
+    CHECK( !parser.next( datagram ) );
+  }
+}
+
 /* A remote forward (-RU) is a forward with the ends exchanged: the server listens, the client relays. */
 static void test_remote( void )
 {
@@ -759,6 +784,7 @@ int main()
   test_wire();
   test_replay();
   test_fragments();
+  test_relay_frames();
   test_loss_measurement();
   test_relay();
   test_remote();

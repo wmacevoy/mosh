@@ -39,7 +39,8 @@ both of those, for instance from an MSYS2 installation.
 A Windows machine can be the server too (from release 1.4.0-pf.2): start
 `mosh-server.exe` there, for instance over Windows's own OpenSSH server.
 Windows blocks incoming UDP unless told otherwise, so allow it for
-`mosh-server.exe` in the firewall first. The Windows server has only been
+`mosh-server.exe` in the firewall first. (Before 1.4.0-pf.3 it also had to
+be given an address to listen on with `-i`.) The Windows server has only been
 tested with forwards and no terminal (`-N`), talking to a client on the same
 machine.
 
@@ -211,6 +212,48 @@ What can still end a connection during an outage is the programs using it:
 an application or server with its own inactivity or keepalive timeout will
 still apply it.
 
+## When UDP is blocked
+
+Mosh talks UDP, and some networks carry only TCP: a campus or hotel network,
+a firewall nobody will open, a host behind a jump box. Mosh used to start
+there and then sit at "Connecting...", since ssh had got through and its own
+datagrams could not.
+
+Now it gets through the way ssh did. If the server has not answered by UDP
+within three seconds of starting (ten, later in a session), mosh opens an ssh
+connection to the server, runs `mosh-server relay` there, and sends its
+datagrams through that. You need do nothing; `--relay` is for saying otherwise:
+
+| `--relay=` | |
+|---|---|
+| `auto` | The default. UDP, with ssh brought in when UDP gets no answer. |
+| `always` | ssh from the start, and no UDP. For a network you know blocks it: saves the three seconds. |
+| `never` | UDP only, as mosh has always behaved. |
+
+What to know about it:
+
+- **It is still a mosh session.** It does not depend on the ssh connection:
+  if that drops, or you change networks, another is opened, and the session
+  carries on. The terminal and the forwards survive as they do over UDP.
+- **UDP is not given up on.** In `auto` mosh keeps trying it, uses it again
+  as soon as it works, and closes the ssh connection after a minute unused.
+  So a laptop carried from a network that blocks UDP to one that does not
+  goes back to UDP by itself.
+- **ssh has to get in again without asking.** The extra connection is made
+  with `BatchMode`, so it needs keys, an agent or a shared connection
+  (`ControlMaster`). With password-only login the fallback cannot happen and
+  mosh behaves as before.
+- **It is slower to react.** Over ssh a delayed datagram holds up everything
+  behind it, which is the thing mosh was built to avoid. Typing is still
+  echoed locally. Forwarded UDP (`-LU`, `-RU`) arrives late instead of not at
+  all, which suits real-time traffic badly.
+- **Both ends need this build.** An older `mosh-server` has no `relay`, and
+  the fallback then does nothing.
+
+With `-N`, mosh says on standard error which way it went:
+`mosh: no answer by UDP; trying through ssh as well.` or, with
+`--relay=always`, `mosh: connecting through ssh.`
+
 ## Running the helper programs directly
 
 The `mosh` wrapper passes the forwarding options to both ends. If you start
@@ -225,8 +268,26 @@ in the same order:
 | `-RU spec`, `--udp-remote-forward=spec` | `-RU spec` |
 | `--fragment-parity=mode` | `-F mode` |
 | `-N` | `-N` (client only; the server is given a command that waits) |
+| `--relay=when` | `MOSH_RELAY=when` and `MOSH_RELAY_COMMAND` in `mosh-client`'s environment (below) |
+
+`MOSH_RELAY_COMMAND` is the command that reaches a relay on the server, as
+its arguments separated by the unit-separator character (code 31); it is run
+directly, without a shell. The wrapper's is, in effect,
+
+```
+ssh -T -o BatchMode=yes user@server -- mosh-server relay ADDRESS PORT
+```
+
+where `ADDRESS` and `PORT` are the server's own, as `mosh-server` reported
+them. Anything that gives a byte stream to `mosh-server relay` on the server
+will do in its place.
 
 ## Troubleshooting
+
+**It sits at "Connecting..." for a few seconds and then works, every time.**
+UDP is blocked between you and the server, and mosh is finding its way
+through ssh. `--relay=always` skips the wait. See
+[When UDP is blocked](#when-udp-is-blocked).
 
 **"Connection refused" on a forwarded port.**
 The usual causes, in order:

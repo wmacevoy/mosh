@@ -97,6 +97,22 @@ Controls local echo insert/overwrite as described in
 See
 .BR mosh (1).
 
+.TP
+.B MOSH_RELAY_COMMAND
+A command that reaches \fBmosh\-server relay\fP on the server, for when
+UDP cannot (see \fB\-\-relay\fP in
+.BR mosh (1)):
+its arguments, separated by the character with code 31 (unit
+separator).  It is run directly, not by a shell.  Datagrams are written
+to its standard input and read from its standard output, each preceded
+by its length as two bytes, most significant first.  Without this
+variable there is no relay.
+
+.TP
+.B MOSH_RELAY
+\fBauto\fP (the default, if there is a relay command), \fBalways\fP or
+\fBnever\fP.
+
 
 .SH SEE ALSO
 .BR mosh (1),

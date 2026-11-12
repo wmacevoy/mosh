@@ -4,6 +4,8 @@ This is an unofficial fork of [mosh](https://mosh.org). It has **not** been secu
 
 **Port forwarding needs this build at both ends**: on your machine and on the server.
 
+New in 1.4.0-pf.3: when UDP cannot reach the server, the session is carried over ssh instead (`--relay`, on by default), and goes back to UDP when it can. A Windows server no longer needs to be told an address to listen on.
+
 ### Install
 
 Linux (x86-64 or ARM64, glibc 2.34 or newer) and macOS (11 or later, Apple Silicon or Intel), into `~/.local/bin`, no root needed:

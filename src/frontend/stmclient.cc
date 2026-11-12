@@ -63,6 +63,9 @@
 #include "stmclient.h"
 
 #include "src/network/networktransport-impl.h"
+#include "src/network/relay.h"
+
+#include <netdb.h>
 
 void STMClient::resume( void )
 {
@@ -285,6 +288,11 @@ void STMClient::main_init( void )
   network->set_verbose( verbose );
   Select::set_verbose( verbose );
 
+  started_at = timestamp();
+  if ( relay_mode == RELAY_ALWAYS ) {
+    engage_relay();
+  }
+
   /* Port forwarding: start listening for local applications */
   if ( !udp_forwards.empty() || !tcp_forwards.empty() || !tcp_remote_forwards.empty()
        || !udp_remote_forwards.empty() ) {
@@ -295,6 +303,64 @@ void STMClient::main_init( void )
         "Bad fragment parity mode (" + fragment_parity + "): expected auto, always or never", 0 );
     }
     network->set_sidechannel_sink( forwarder->sink() );
+  }
+}
+
+/* Start the local relay, and talk to the server through it from now on. */
+void STMClient::engage_relay( void )
+{
+  relay_engaged = true; /* (or tried: either way, once) */
+
+  Network::RelayOptions options;
+  options.command = relay_command;
+  options.stream_only = relay_mode == RELAY_ALWAYS;
+
+  struct addrinfo hints, *res = NULL;
+  memset( &hints, 0, sizeof( hints ) );
+  hints.ai_family = AF_UNSPEC;
+  hints.ai_socktype = SOCK_DGRAM;
+  hints.ai_flags = AI_NUMERICHOST | AI_NUMERICSERV;
+  if ( getaddrinfo( ip.c_str(), port.c_str(), &hints, &res ) != 0 ) {
+    return;
+  }
+  options.server_len = res->ai_addrlen;
+  memcpy( &options.server, res->ai_addr, res->ai_addrlen );
+  freeaddrinfo( res );
+
+  pid_t pid;
+  const int relay_port = Network::relay_start_local( options, relay_keep_alive, pid );
+  if ( relay_port == 0 ) {
+    return;
+  }
+
+  Network::Addr relay;
+  memset( &relay, 0, sizeof( relay ) );
+  relay.sin.sin_family = AF_INET;
+  relay.sin.sin_addr.s_addr = htonl( INADDR_LOOPBACK );
+  relay.sin.sin_port = htons( relay_port );
+  network->set_remote_addr( relay, sizeof( relay.sin ) );
+
+  if ( headless ) {
+    fputs( relay_mode == RELAY_ALWAYS ? "mosh: connecting through ssh.\n"
+                                      : "mosh: no answer by UDP; trying through ssh as well.\n",
+           stderr );
+    fflush( stderr );
+  }
+}
+
+/* If the server has gone quiet and there is another way to it, take it. */
+void STMClient::consider_relay( void )
+{
+  if ( relay_engaged || relay_mode != RELAY_AUTO || network->shutdown_in_progress() ) {
+    return;
+  }
+
+  const uint64_t now = timestamp();
+  const uint64_t heard = network->last_heard();
+  /* Sooner at the start, when a network that will not carry UDP is the likeliest reason. */
+  const bool quiet = ( heard == uint64_t( -1 ) ) ? ( now - started_at > 3000 ) : ( now - heard > 10000 );
+  if ( quiet ) {
+    engage_relay();
   }
 }
 
@@ -474,7 +540,8 @@ bool STMClient::main( void )
   /* Drop unnecessary privileges */
 #ifdef HAVE_PLEDGE
   /* OpenBSD pledge() syscall */
-  if ( pledge( "stdio inet tty", NULL ) ) {
+  /* (the relay, if there is to be one, is another process and runs ssh) */
+  if ( pledge( relay_mode == RELAY_NEVER ? "stdio inet tty" : "stdio inet tty proc exec", NULL ) ) {
     perror( "pledge() failed" );
     exit( 1 );
   }
@@ -607,6 +674,8 @@ bool STMClient::main( void )
                   && ( overlays.get_notification_engine().get_notification_string() == connecting_notification ) ) {
         overlays.get_notification_engine().set_notification_string( L"" );
       }
+
+      consider_relay();
 
       network->tick();
 

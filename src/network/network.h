@@ -246,6 +246,12 @@ public:
   uint64_t timeout( void ) const;
   double get_SRTT( void ) const { return SRTT; }
 
+  /*
+   * Client: send to somewhere else from now on (to a local relay, when
+   * the server cannot be reached directly; see relay.h).
+   */
+  void set_remote_addr( const Addr& addr, socklen_t len );
+
   /* When a datagram last arrived from the peer; uint64_t( -1 ) if none has. */
   uint64_t get_last_heard( void ) const { return last_heard; }
 

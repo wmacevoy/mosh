@@ -54,6 +54,15 @@ and the client's current IP address.
 
 \fBmosh-server\fP exits when the client terminates the connection.
 
+Run as \fBmosh\-server relay\fP \fIADDRESS\fP \fIPORT\fP it does
+something else: it starts no session, and instead passes datagrams
+between its standard input and output and the mosh server at that
+address and UDP port, each preceded on the stream by its length as two
+bytes, most significant first.  \fBmosh\fP runs it over ssh when UDP
+cannot reach the server; see \fB\-\-relay\fP in
+.BR mosh (1).
+It exits when its input ends.
+
 .SH OPTIONS
 
 The argument "new" must be first on the command line to use

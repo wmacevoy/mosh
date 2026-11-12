@@ -87,6 +87,8 @@ my $fragment_parity = undef;
 
 my $headless = 0;
 
+my $relay = 'auto';
+
 my $use_remote_ip = 'proxy';
 
 my $family = 'prefer-inet';
@@ -165,6 +167,11 @@ qq{Usage: $0 [options] [--] [user@]host [command...]
                                 forwards given with it, open until
                                 interrupted (as "ssh -N" does)
 
+        --relay={auto|always|never}
+                             carry the session over ssh when UDP cannot
+                                reach the server: when needed (default),
+                                from the start and nothing else, or never
+
         --ssh=COMMAND        ssh command to run when setting up session
                                 (example: "ssh -p 2222")
                                 (default: "ssh")
@@ -232,6 +239,7 @@ GetOptions( 'client=s' => \$client,
 	    'tcp-remote-forward|R=s' => \@tcp_remote_forwards,
 	    'fragment-parity=s' => \$fragment_parity,
 	    'N' => \$headless,
+	    'relay=s' => \$relay,
 	    'no-fragment-parity' => sub { $fragment_parity = 'never' },
 	    'experimental-remote-ip=s' => \$use_remote_ip) or die $usage;
 
@@ -248,6 +256,10 @@ if ( defined $fragment_parity ) {
   if ( not grep { $_ eq $fragment_parity } qw { auto always never } ) {
     die "$0: Unknown fragment parity mode \"$fragment_parity\".\n\n$usage";
   }
+}
+
+if ( not grep { $_ eq $relay } qw { auto always never } ) {
+  die "$0: Unknown relay mode \"$relay\".\n\n$usage";
 }
 
 if ( defined $predict ) {
@@ -559,6 +571,20 @@ if ( $pid == 0 ) { # child
   $ENV{ 'MOSH_KEY' } = $key;
   $ENV{ 'MOSH_PREDICTION_DISPLAY' } = $predict;
   $ENV{ 'MOSH_NO_TERM_INIT' } = '1' if !$term_init;
+
+  # If UDP will not reach the server, the client can carry the session
+  # over ssh instead, by running a relay on the server.  It is told how
+  # to start one: the words of a command, separated by the character
+  # 0x1F.  ssh must not ask for anything, because the terminal will be
+  # the session's by then.
+  if ( $relay ne 'never' ) {
+    my $remote = "$server relay " . shell_quote( $ip, $port );
+    my @relay = defined( $localhost )
+      ? ( 'sh', '-c', $remote )
+      : ( @ssh, '-T', '-o', 'BatchMode=yes', $userhost, '--', $remote );
+    $ENV{ 'MOSH_RELAY_COMMAND' } = join( "\x1f", @relay );
+    $ENV{ 'MOSH_RELAY' } = $relay;
+  }
   exec {$client} ("$client", "-# @cmdline |", ( map { ( '-LU', $_ ) } @udp_forwards ),
 		    ( map { ( '-RU', $_ ) } @udp_remote_forwards ),
 		    ( map { ( '-L', $_ ) } @tcp_forwards ),

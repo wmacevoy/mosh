@@ -253,6 +253,8 @@ jobs:
         & "$dir\mosh-client.exe" --version
         & "$dir\mosh-server.exe" --version
         python src\tests\headless-smoke.py "$dir\mosh-server.exe" "$dir\mosh-client.exe"
+        python src\tests\headless-smoke.py "$dir\mosh-server.exe" "$dir\mosh-client.exe" ::1
+        python src\tests\headless-smoke.py "$dir\mosh-server.exe" "$dir\mosh-client.exe" 127.0.0.1 blocked
 
     - uses: actions/upload-artifact@v4
       with:

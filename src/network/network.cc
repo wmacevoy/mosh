@@ -555,6 +555,16 @@ std::string Connection::recv_one( int sock_to_recv )
   return p.payload;
 }
 
+void Connection::set_remote_addr( const Addr& addr, socklen_t len )
+{
+  assert( !server );
+  remote_addr = addr;
+  remote_addr_len = len;
+  has_remote_addr = true;
+  set_MTU( remote_addr.sa.sa_family );
+  hop_port(); /* a new socket, of the right family; the old ones are kept a while, then dropped */
+}
+
 /* Called for each datagram received, after expected_receiver_seq has been brought up to date. */
 void Connection::measure_loss( uint64_t seq )
 {

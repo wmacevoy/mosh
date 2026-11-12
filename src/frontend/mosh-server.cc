@@ -95,6 +95,7 @@
 
 #include "src/network/networktransport-impl.h"
 #include "src/network/forwarding.h"
+#include "src/network/relay.h"
 
 using ServerConnection = Network::Transport<Terminal::Complete, Network::UserStream>;
 
@@ -203,6 +204,15 @@ int main( int argc, char* argv[] )
   std::list<std::string> locale_vars;
   std::vector<std::string> udp_forwards, udp_remote_forwards, tcp_forwards, tcp_remote_forwards;
   std::string fragment_parity = "auto";
+
+  /*
+   * "mosh-server relay ADDRESS PORT" is not a server at all: it carries a
+   * client's datagrams, arriving over ssh, to a server that is already
+   * running here, for when they cannot get here by UDP.  See relay.h.
+   */
+  if ( argc == 4 && strcmp( argv[1], "relay" ) == 0 ) {
+    return Network::relay_remote( argv[2], argv[3] );
+  }
 
   /* strip off command */
   for ( int i = 1; i < argc; i++ ) {

@@ -334,6 +334,30 @@ killed, or the command on the server ends; if no \fIcommand\fP is
 given, one that simply waits is run there.
 
 .TP
+.B \-\-relay=\fIWHEN\fP
+Experimental.  What to do when UDP cannot reach the server, as on a
+network that carries only TCP.  \fBmosh\fP can then carry its datagrams
+over an \fBssh\fP connection instead, to \fBmosh\-server relay\fP
+running on the server, which passes them on.  \fIWHEN\fP is one of:
+
+\fBauto\fP (the default): use UDP, and bring in ssh as well if the
+server does not answer: after three seconds when starting, ten later
+on.  UDP is still tried all the while, and when it works again the ssh
+connection is dropped after a minute unused.
+
+\fBalways\fP: use ssh from the start, and not UDP.
+
+\fBnever\fP: UDP only, as mosh has always done.
+
+The session does not depend on the ssh connection, which is replaced if
+it is lost.  ssh must be able to log in again without asking anything
+(it is run with \fBBatchMode\fP), so this needs keys, an agent, or a
+shared connection, not a password.  The server needs this build of
+\fBmosh\-server\fP.  Through ssh a datagram held up holds up those
+behind it, so the session is less lively than over UDP, and forwarded
+UDP loses its point; it is better than no session.
+
+.TP
 .B \-\-experimental\-remote\-ip={proxy|local|remote}
 Select the method used to discover the IP address that the
 \fBmosh-client\fP connects to.

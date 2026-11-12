@@ -29,6 +29,7 @@ mosh maintainers and is not part of any mosh release. See
 | `-LU [bind:]port:host:hostport` | UDP datagrams sent to a port on **your machine**, to `host:hostport` as seen from the server | none |
 | `-RU [bind:]port:host:hostport` | UDP datagrams sent to a port on **the server**, to `host:hostport` as seen from your machine | none |
 | `-N` | No terminal: just hold the session and its forwards open | `ssh -N` |
+| `--relay=WHEN` | When UDP cannot reach the server at all, carry the session over ssh instead: `auto` (the default), `always` or `never` | none |
 | `--fragment-parity=MODE` | Whether large UDP datagrams get parity so they survive a lost fragment: `auto` (the default), `always` or `never` | none |
 
 ## Why
@@ -58,6 +59,8 @@ It also makes UDP forwarding possible at all, which ssh does not offer.
 - This build of mosh on **both** ends. If the server is an older mosh,
   the terminal works as usual and forwards simply do nothing (connections are
   refused).
+- UDP to the server, as mosh has always needed; but where a network will
+  not carry it, the session now [falls back to ssh](usage.md#when-udp-is-blocked).
 - Nothing else: no extra privileges, ports or configuration. On Linux there
   is a [one-line installer](usage.md#installing) that needs no root.
 

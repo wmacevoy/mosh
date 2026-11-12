@@ -161,6 +161,12 @@ public:
 
   double sidechannel_loss( void ) const { return peer_recv_loss; }
 
+  /* Client: reach the server by way of something else (a local relay). */
+  void set_remote_addr( const Addr& addr, socklen_t len ) { connection.set_remote_addr( addr, len ); }
+
+  /* When anything last arrived from the peer; uint64_t( -1 ) if nothing has. */
+  uint64_t last_heard( void ) const { return connection.get_last_heard(); }
+
   bool sidechannel_connected( void ) const
   {
     const uint64_t heard = connection.get_last_heard();

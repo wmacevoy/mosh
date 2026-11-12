@@ -2,7 +2,7 @@ EXTRA_DIST = \
 	hold-stdin print-exitstatus \
 	e2e-test e2e-test-server \
 	e2e-test-subrs \
-	forward-e2e.test forward-e2e.py headless-smoke.py \
+	forward-e2e.test forward-e2e.py headless-smoke.py relay.test \
 	mosh-client mosh-server \
 	local.test \
 	$(displaytests) \
@@ -41,7 +41,7 @@ displaytests = \
 	window-resize.test
 
 check_PROGRAMS = ocb-aes encrypt-decrypt base64 nonce-incr udp-forward tcp-in-udp tcp-forward inpty is-utf8-locale
-TESTS = ocb-aes encrypt-decrypt base64 nonce-incr udp-forward tcp-in-udp tcp-forward local.test forward-e2e.test $(displaytests)
+TESTS = ocb-aes encrypt-decrypt base64 nonce-incr udp-forward tcp-in-udp tcp-forward local.test forward-e2e.test relay.test $(displaytests)
 XFAIL_TESTS = \
 	e2e-failure.test \
 	emulation-attributes-256color8.test

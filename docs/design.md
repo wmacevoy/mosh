@@ -180,6 +180,54 @@ other way round, using a different frame type so the two directions share the
 side channel without confusion. `-RU` is `-LU` reversed in exactly the same
 way.
 
+## The relay: when UDP is blocked
+
+Everything above rides on mosh's UDP datagrams, and some networks do not
+carry UDP. They do carry ssh, or the session could not have been started. So
+the datagrams can go by ssh:
+
+```
+mosh-client --UDP--> local relay ==ssh==> mosh-server relay --UDP--> mosh-server
+       (your machine, loopback)                 (the server, to itself)
+```
+
+The local relay is a process `mosh-client` forks; the client then simply
+sends to it on loopback instead of to the server. The remote one is
+`mosh-server relay ADDRESS PORT`, run by ssh, which copies between its
+standard input and output and a UDP socket. On the stream each datagram is
+preceded by its length in two bytes. The remote relay is told the address
+the client uses for the server, but tries the server's own addresses for
+itself as well (the one ssh arrived at, and loopback) and keeps whichever
+answers: behind address translation, the outside address is often not one a
+machine can send to itself. The datagrams are mosh's own, encrypted
+and authenticated end to end as always: the relays see nothing they can read
+or alter, and need no trust.
+
+What makes this small is that mosh already roams. `mosh-server` is not
+changed at all: it sees a client at one of its own addresses, and when the
+ssh connection is replaced, a client whose address has changed, which it has
+always allowed for. Nor does the session depend on the ssh connection. The
+local relay starts another when one ends, backing off from one second to
+thirty (or to five minutes if none has ever worked, which usually means ssh
+cannot log in unattended, and there is no sense in knocking).
+
+**No decision to get wrong.** The local relay sends everything straight to
+the server by UDP as well, always. Only when nothing has come straight back
+for 2.5 seconds does it also use the stream, and when the stream has been
+unneeded for a minute it is closed. Duplicates cost nothing, since mosh
+discards them by sequence number, so the two routes need no arbitration and
+there is no state in which a working route is left unused.
+
+The client decides only whether to have a relay at all: with `--relay=auto`,
+when it has heard nothing for three seconds at the start of a session or ten
+later on. Once started, the relay stays for the rest of the session. A
+session that never loses UDP never starts one.
+
+**What is lost.** A stream delivers late what UDP would have dropped, so
+mosh's round-trip estimates and its frame-rate control are working from
+worse information, and forwarded TCP is TCP over TCP. That is why it is a
+fallback and not a mode to prefer.
+
 ## Why not something else?
 
 **UDP over a reliable stream.** One lost packet would stall everything behind
@@ -207,6 +255,7 @@ semantics for UDP, and TCP-over-TCP for TCP.
 | `tcpinudp.{h,cc}` | The TCP-in-UDP header transformation and checksums |
 | `tcpforward.{h,cc}` | TCP forwarder: framing and replay protection |
 | `tcpadapter.{h,cc}` | The socket adapter (built-in TCP) |
+| `relay.{h,cc}` | The two relays and the framing between them |
 | `forwarding.h` | Everything above behind one event-loop interface for the two programs |
 | `network.{h,cc}` | Loss measurement (added to the existing connection) |
 | `networktransport*.h`, `transportsender*.h` | Side-channel hooks and the two new optional message fields |

@@ -82,6 +82,22 @@ private:
   bool headless;
   bool announced;
 
+  /* Reaching the server through ssh when UDP will not get there (see src/network/relay.h). */
+  enum RelayMode
+  {
+    RELAY_NEVER,
+    RELAY_AUTO,  /* when nothing is heard from the server */
+    RELAY_ALWAYS /* from the start, and nothing by UDP */
+  };
+  RelayMode relay_mode;
+  std::vector<std::string> relay_command;
+  bool relay_engaged;
+  int relay_keep_alive;
+  uint64_t started_at;
+
+  void engage_relay( void );
+  void consider_relay( void );
+
   void main_init( void );
   void process_network_input( void );
   bool process_user_input( int fd );
@@ -120,7 +136,8 @@ public:
       fragment_parity( s_fragment_parity ), forwarder(),
       connecting_notification(),
       repaint_requested( false ), lf_entered( false ), quit_sequence_started( false ), clean_shutdown( false ),
-      verbose( s_verbose ), headless( s_headless ), announced( false )
+      verbose( s_verbose ), headless( s_headless ), announced( false ),
+      relay_mode( RELAY_NEVER ), relay_command(), relay_engaged( false ), relay_keep_alive( -1 ), started_at( 0 )
   {
     if ( predict_mode ) {
       if ( !strcmp( predict_mode, "always" ) ) {
@@ -144,6 +161,17 @@ public:
   void init( void );
   void shutdown( void );
   bool main( void );
+
+  /*
+   * How to get to the server when UDP does not: "command" starts the
+   * remote relay (typically through ssh), and "mode" is "auto" to use
+   * it when the server cannot be heard, or "always".
+   */
+  void set_relay( const std::string& mode, const std::vector<std::string>& command )
+  {
+    relay_command = command;
+    relay_mode = command.empty() ? RELAY_NEVER : ( mode == "always" ? RELAY_ALWAYS : RELAY_AUTO );
+  }
 
   /* unused */
   STMClient( const STMClient& );

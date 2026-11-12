@@ -15,7 +15,7 @@ narrow, and forwarding widens it considerably.
 Everything below was run on Linux over the loopback interface, with the real
 `mosh-client` and `mosh-server` unless noted.
 
-**Mosh's own test suite** passes with these changes (31 pass, 2 expected
+**Mosh's own test suite** passes with these changes (32 pass, 2 expected
 failures and 2 skips, as before, plus the new unit tests).
 
 **New tests** (`make check` runs them):
@@ -24,6 +24,7 @@ failures and 2 skips, as before, plus the new unit tests).
 |---|---|
 | `udp-forward` | Specification parsing, the frame format, the replay window, fragmentation and parity (every single-fragment loss across a range of sizes), reassembly timeout, the automatic parity decision, loss measurement, and a relay through two forwarders |
 | `tcp-in-udp` | The header transformation in both directions, with checksums checked against independently computed values for IPv4 and IPv6 |
+| `relay.test` | Sessions carried by the relay: from the start; found by the client when UDP gets no answer; with the relay told an address that is not the server's own; over IPv6; with the relay killed part way, after which the session carries on through a new one; and that no relay outlives its client. The remote relay is run directly, where ssh would run it. Needs `python3` |
 | `forward-e2e.test` | A real `mosh-server` and `mosh-client` with one forward of each kind (`-L`, `-R`, `-LU`, `-RU`): TCP both ways with an orderly close, and UDP datagrams sent whole and in fragments. Needs `python3`; skipped without it |
 | `tcp-forward` | Six simulated hours out of contact without losing a connection; and real TCP connections through a pair of socket adapters, clean and with 5% of datagrams lost, with a small MTU, a refusing target, a peer that does not support forwarding, and local and remote forwards sharing one session |
 
@@ -37,6 +38,7 @@ failures and 2 skips, as before, plus the new unit tests).
 | UDP `-LU` and `-RU` | Datagrams from 1 byte to 65,507 bytes echoed correctly |
 | UDP, 3000-byte datagrams, 5% loss | Request/reply pairs complete 76% of the time without parity, 97.5% with it, 95.5% in `auto` |
 | UDP, 5000-byte datagrams, 1% loss | 89.6% without parity, 99.0% in `auto` |
+| UDP cut off in the middle of a session (`--relay=auto`) | Carries on through the relay about 12 seconds later; goes back to UDP when it returns, and closes the relay a minute after |
 | New client with an old server, and old client with a new server | Terminal works normally; nothing is forwarded |
 
 ## Checked on every change
@@ -81,6 +83,9 @@ independent review.
 - IPv6 forwarding targets and IPv6 mosh sessions.
 - The `mosh` wrapper over a real ssh connection (only that it passes the
   options to both ends).
+- The relay over a real ssh connection, and on a real network that blocks
+  UDP. In the tests the remote relay is started directly and UDP is "blocked"
+  by pointing the client at a port nothing answers on.
 - Any platform other than Linux. The code is meant to be portable but has
   not been built elsewhere.
 
@@ -104,6 +109,18 @@ patch are unprotected.
 
 **Counts.** Up to 16 forwards of each kind, and 64 simultaneous TCP
 connections and 64 UDP conversations in each direction.
+
+**The relay needs ssh to log in unattended.** It is run with `BatchMode`, so
+with password-only login there is no fallback. Mosh cannot tell that from a
+network that is merely away, so while it hears nothing from the server it
+tries ssh again: a few times in the first minutes, then every five. Those
+show in the server's log as failed logins; `--relay=never` stops them.
+
+**The local relay listens on a loopback UDP port.** Another user of your
+machine can send to it. They cannot read or forge the session, which is
+encrypted and authenticated from end to end, but they can misdirect the
+server's replies until your client next sends, which is a brief stall. And it is a fallback: over
+ssh, mosh's datagrams queue behind one another like any TCP traffic.
 
 **Forwards end with the session.** There is no way to add or remove one
 while the session runs.
