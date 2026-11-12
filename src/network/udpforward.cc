@@ -388,11 +388,15 @@ private:
 };
 }
 
-UDPForwarder::UDPForwarder( SideChannelLink* s_link, Role s_role, const std::vector<std::string>& specs )
-  : link( s_link ), role( s_role ), verbose( 0 ), parity_mode( PARITY_AUTO ), forwards(), flows(),
-    next_flow_id( 0 ),
-    next_seq( 0 ), replay(), partials(), finished(), dropped_oversize( 0 ), fragmented( 0 ), with_parity( 0 ),
-    reassembled( 0 ), recovered( 0 ), abandoned( 0 )
+UDPForwarder::UDPForwarder( SideChannelLink* s_link,
+                            Role s_role,
+                            const std::vector<std::string>& specs,
+                            bool reverse )
+  : link( s_link ), role( s_role ), data_type( reverse ? TYPE_UDP_REVERSE_DATA : TYPE_UDP_DATA ),
+    fragment_type( reverse ? TYPE_UDP_REVERSE_FRAGMENT : TYPE_UDP_FRAGMENT ), verbose( 0 ),
+    parity_mode( PARITY_AUTO ), forwards(), flows(), next_flow_id( 0 ), next_seq( 0 ), replay(), partials(),
+    finished(), dropped_oversize( 0 ), fragmented( 0 ), with_parity( 0 ), reassembled( 0 ), recovered( 0 ),
+    abandoned( 0 )
 {
   if ( specs.size() > MAX_FORWARDS ) {
     throw NetworkException( "UDP forwarding: too many forwarding specifications", 0 );
@@ -543,7 +547,7 @@ void UDPForwarder::to_network( Flow& flow, const char* data, size_t len )
   const std::string datagram( data, len );
 
   if ( HEADER_LEN + len <= limit ) {
-    link->sidechannel_send( encode( flow.forward, flow.id, next_seq++, datagram ) );
+    link->sidechannel_send( encode_frame( data_type, flow.forward, flow.id, next_seq++, datagram ) );
     return;
   }
 
@@ -573,7 +577,7 @@ void UDPForwarder::to_network( Flow& flow, const char* data, size_t len )
 
   /* The receiver relies on these sequence numbers being consecutive. */
   for ( std::vector<std::string>::const_iterator i = fragments.begin(); i != fragments.end(); i++ ) {
-    link->sidechannel_send( encode_frame( TYPE_UDP_FRAGMENT, flow.forward, flow.id, next_seq++, *i ) );
+    link->sidechannel_send( encode_frame( fragment_type, flow.forward, flow.id, next_seq++, *i ) );
   }
   fragmented++;
   with_parity += parity ? 1 : 0;
@@ -670,7 +674,7 @@ void UDPForwarder::sidechannel_recv( const std::string& payload )
   std::string data;
 
   if ( !decode_frame( payload, type, forward, flow_id, seq, data ) || forward >= forwards.size()
-       || ( type != TYPE_UDP_DATA && type != TYPE_UDP_FRAGMENT ) ) {
+       || ( type != data_type && type != fragment_type ) ) {
     return;
   }
 
@@ -682,7 +686,7 @@ void UDPForwarder::sidechannel_recv( const std::string& payload )
 
   const uint64_t now = timestamp();
 
-  if ( type == TYPE_UDP_FRAGMENT ) {
+  if ( type == fragment_type ) {
     fragment_recv( forward, flow_id, seq, data, now );
   } else {
     deliver( forward, flow_id, data, now );

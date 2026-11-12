@@ -51,6 +51,7 @@ class Forwarding
 private:
   SideChannelMux mux;
   std::unique_ptr<UDPForwarder> udp;
+  std::unique_ptr<UDPForwarder> udp_remote; /* forwards the server listens for (-RU) */
   std::unique_ptr<TCPForwarder> tcp;
   std::unique_ptr<TCPForwarder> tcp_remote; /* forwards the server listens for (-R) */
 
@@ -61,13 +62,21 @@ public:
               const std::vector<std::string>& udp_specs,
               const std::vector<std::string>& tcp_specs,
               bool tcp_tun,
-              const std::vector<std::string>& tcp_remote_specs = std::vector<std::string>() )
-    : mux(), udp(), tcp(), tcp_remote()
+              const std::vector<std::string>& tcp_remote_specs = std::vector<std::string>(),
+              const std::vector<std::string>& udp_remote_specs = std::vector<std::string>() )
+    : mux(), udp(), udp_remote(), tcp(), tcp_remote()
   {
     if ( !udp_specs.empty() ) {
       udp.reset( new UDPForwarder( link, client ? UDPForwarder::LISTEN : UDPForwarder::CONNECT, udp_specs ) );
       mux.set_sink( UDPForwarder::TYPE_UDP_DATA, udp.get() );
       mux.set_sink( UDPForwarder::TYPE_UDP_FRAGMENT, udp.get() );
+    }
+    if ( !udp_remote_specs.empty() ) {
+      /* the same again with the ends exchanged */
+      udp_remote.reset( new UDPForwarder(
+        link, client ? UDPForwarder::CONNECT : UDPForwarder::LISTEN, udp_remote_specs, true ) );
+      mux.set_sink( UDPForwarder::TYPE_UDP_REVERSE_DATA, udp_remote.get() );
+      mux.set_sink( UDPForwarder::TYPE_UDP_REVERSE_FRAGMENT, udp_remote.get() );
     }
     if ( !tcp_specs.empty() ) {
       tcp.reset( new TCPForwarder( link,
@@ -110,6 +119,9 @@ public:
     if ( udp ) {
       udp->set_parity_mode( m );
     }
+    if ( udp_remote ) {
+      udp_remote->set_parity_mode( m );
+    }
     return true;
   }
 
@@ -117,6 +129,9 @@ public:
   {
     if ( udp ) {
       udp->set_verbose( verbose );
+    }
+    if ( udp_remote ) {
+      udp_remote->set_verbose( verbose );
     }
     if ( tcp ) {
       tcp->set_verbose( verbose );
@@ -146,6 +161,10 @@ public:
     if ( udp ) {
       ret = udp->fds();
     }
+    if ( udp_remote ) {
+      const std::vector<int> more = udp_remote->fds();
+      ret.insert( ret.end(), more.begin(), more.end() );
+    }
     if ( tcp ) {
       const std::vector<int> more = tcp->fds();
       ret.insert( ret.end(), more.begin(), more.end() );
@@ -162,6 +181,9 @@ public:
     /* each forwarder ignores descriptors that aren't its own */
     if ( udp ) {
       udp->read_fd( fd );
+    }
+    if ( udp_remote ) {
+      udp_remote->read_fd( fd );
     }
     if ( tcp ) {
       tcp->read_fd( fd );

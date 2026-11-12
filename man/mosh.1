@@ -58,7 +58,7 @@ server.) Occasional echo mistakes are corrected within a network
 round-trip and do not cause lasting effect.
 
 \fBmosh\fP does not support X forwarding or the non-interactive uses
-of SSH, including sshfs (but see \fB\-L\fP, \fB\-R\fP and \fB\-U\fP
+of SSH, including sshfs (but see \fB\-L\fP, \fB\-R\fP, \fB\-LU\fP and \fB\-RU\fP
 for experimental port forwarding). \fBmosh\fP works through
 typical client-side network address translators but requires UDP to
 pass between client and server. By default, \fBmosh\fP uses the ports
@@ -237,7 +237,7 @@ option requires the \fBhost\fP argument to be a local, numeric
 IPv4/IPv6 address.  This option is useful for testing.
 
 .TP
-.B \-U \fR[\fP\fIBIND_ADDRESS\fP:\fR]\fP\fIPORT\fP:\fIHOST\fP:\fIHOSTPORT\fP
+.B \-LU \fR[\fP\fIBIND_ADDRESS\fP:\fR]\fP\fIPORT\fP:\fIHOST\fP:\fIHOSTPORT\fP
 .TQ
 .B \-\-udp\-forward=\fR[\fP\fIBIND_ADDRESS\fP:\fR]\fP\fIPORT\fP:\fIHOST\fP:\fIHOSTPORT\fP
 Experimental.  Forward UDP datagrams: datagrams sent to \fIPORT\fP on
@@ -254,12 +254,23 @@ are sent in fragments and reassembled at the other end; if any
 fragment is lost, the whole datagram is, unless parity was sent with
 it (see \fB\-\-fragment\-parity\fP).  Forwarding lasts only as long as the terminal session,
 and needs a server that supports it; with an older server nothing is
-forwarded.  Only UDP is forwarded, and only from client to server
-(there is no equivalent of \fBssh \-R\fP).
+forwarded.
+
+.TP
+.B \-RU \fR[\fP\fIBIND_ADDRESS\fP:\fR]\fP\fIPORT\fP:\fIHOST\fP:\fIHOSTPORT\fP
+.TQ
+.B \-\-udp\-remote\-forward=\fR[\fP\fIBIND_ADDRESS\fP:\fR]\fP\fIPORT\fP:\fIHOST\fP:\fIHOSTPORT\fP
+Experimental.  Forward UDP datagrams the other way: datagrams sent to
+\fIPORT\fP on the server are carried inside the mosh session and
+re-sent by the client to \fIHOST\fP:\fIHOSTPORT\fP, as seen from the
+local machine, and replies are returned to the sender on the server.
+\fIBIND_ADDRESS\fP is an address of the server, and defaults to
+127.0.0.1.  Otherwise this behaves as \fB\-LU\fP does.  The option may
+be repeated.
 
 .TP
 .B \-\-fragment\-parity={auto|always|never}
-Experimental.  When a datagram forwarded with \fB\-U\fP has to be
+Experimental.  When a datagram forwarded with \fB\-LU\fP or \fB\-RU\fP has to be
 fragmented, mosh can send one extra parity fragment for every eight
 fragments or fewer, so that the datagram survives the loss of any one
 fragment in each such group.  This makes large datagrams considerably

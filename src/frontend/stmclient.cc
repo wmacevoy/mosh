@@ -272,9 +272,10 @@ void STMClient::main_init( void )
   Select::set_verbose( verbose );
 
   /* Port forwarding: start listening for local applications */
-  if ( !udp_forwards.empty() || !tcp_forwards.empty() || !tcp_remote_forwards.empty() ) {
-    forwarder.reset(
-      new Network::Forwarding( network.get(), true, udp_forwards, tcp_forwards, tcp_tun, tcp_remote_forwards ) );
+  if ( !udp_forwards.empty() || !tcp_forwards.empty() || !tcp_remote_forwards.empty()
+       || !udp_remote_forwards.empty() ) {
+    forwarder.reset( new Network::Forwarding(
+      network.get(), true, udp_forwards, tcp_forwards, tcp_tun, tcp_remote_forwards, udp_remote_forwards ) );
     if ( !forwarder->set_fragment_parity( fragment_parity ) ) {
       throw Network::NetworkException(
         "Bad fragment parity mode (" + fragment_parity + "): expected auto, always or never", 0 );

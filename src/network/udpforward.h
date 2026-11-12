@@ -43,12 +43,13 @@
 #include "src/network/sidechannel.h"
 
 /*
- * UDP port forwarding over the mosh side channel ("-U", in the manner
- * of ssh's "-L" for TCP).
+ * UDP port forwarding over the mosh side channel ("-LU" and "-RU", in
+ * the manner of ssh's "-L" and "-R" for TCP).
  *
- * The client listens on a local UDP port.  Each datagram it receives is
- * sent to the server over the side channel, and the server re-sends it
- * to a fixed target from a socket of its own.  Whatever the target
+ * For a local forward (-LU), the client listens on a local UDP port.
+ * Each datagram it receives is sent to the server over the side
+ * channel, and the server re-sends it to a fixed target from a socket
+ * of its own.  Whatever the target
  * replies travels back the same way and is delivered to the original
  * local sender.
  *
@@ -71,7 +72,10 @@
  * Both ends are given the same list of forwarding specifications, so
  * nothing but data needs to cross the network: a forwarded datagram
  * names its specification by index and its conversation by a flow id
- * that the client chooses.
+ * that the listening end chooses.
+ *
+ * A remote forward (-RU) is the same with the ends exchanged: the
+ * server listens and the client sends to the target.
  */
 
 namespace Network {
@@ -175,8 +179,8 @@ class UDPForwarder : public SideChannelSink
 public:
   enum Role
   {
-    LISTEN, /* mosh-client: accept datagrams on local ports */
-    CONNECT /* mosh-server: relay them to the targets */
+    LISTEN, /* accept datagrams on ports of this machine */
+    CONNECT /* relay them to the targets */
   };
 
   /* magic, type, forward index, flow id (2), sequence number (8) */
@@ -185,6 +189,8 @@ public:
   static constexpr uint8_t TYPE_TCP_SEGMENT = 1; /* see tcpforward.h */
   static constexpr uint8_t TYPE_UDP_FRAGMENT = 2;
   static constexpr uint8_t TYPE_TCP_REVERSE = 3; /* TCP segments of forwards the server listens for (-R) */
+  static constexpr uint8_t TYPE_UDP_REVERSE_DATA = 4; /* likewise for UDP (-RU) */
+  static constexpr uint8_t TYPE_UDP_REVERSE_FRAGMENT = 5;
 
   enum ParityMode
   {
@@ -264,6 +270,7 @@ private:
 
   SideChannelLink* link;
   Role role;
+  uint8_t data_type, fragment_type;
   unsigned int verbose;
   ParityMode parity_mode;
 
@@ -299,8 +306,17 @@ private:
   UDPForwarder& operator=( const UDPForwarder& );
 
 public:
-  /* Throws NetworkException if a specification can't be parsed, resolved or bound. */
-  UDPForwarder( SideChannelLink* s_link, Role s_role, const std::vector<std::string>& specs );
+  /*
+   * Throws NetworkException if a specification can't be parsed, resolved or bound.
+   *
+   * Normally the client listens and the server connects.  For forwards
+   * the other way round (the server listens), both ends say "reverse",
+   * which keeps the two directions' datagrams apart on the wire.
+   */
+  UDPForwarder( SideChannelLink* s_link,
+                Role s_role,
+                const std::vector<std::string>& specs,
+                bool reverse = false );
   ~UDPForwarder();
 
   void set_verbose( unsigned int s_verbose ) { verbose = s_verbose; }

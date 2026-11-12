@@ -33,7 +33,7 @@ session works normally and the forwards do nothing.
 
 ## The forwarding specification
 
-All three forwarding options take the same argument as ssh:
+All four forwarding options take the same argument as ssh's `-L`:
 
 ```
 [bind_address:]port:host:hostport
@@ -87,10 +87,12 @@ session and connect to `localhost:3000` on your machine. Long form:
   default only programs on the server can use it.
 - Connections are refused until your client has connected to the session.
 
-## `-U`: UDP forward
+## `-LU` and `-RU`: UDP forwards
+
+The UDP options are the TCP ones with a `U` added.
 
 ```
-mosh -U 5353:10.0.0.53:53 user@server
+mosh -LU 5353:10.0.0.53:53 user@server
 dig @127.0.0.1 -p 5353 example.com
 ```
 
@@ -98,13 +100,24 @@ Datagrams sent to `localhost:5353` on your machine are re-sent by the server
 to `10.0.0.53:53`, and replies come back to whoever sent them. Long form:
 `--udp-forward=`.
 
+```
+mosh -RU 6000:localhost:6000 user@server
+```
+
+Datagrams sent to `localhost:6000` **on the server** are re-sent by your
+machine to `localhost:6000` there, and replies go back to the sender on the
+server. Long form: `--udp-remote-forward=`. As with `-R`, the server listens
+on `127.0.0.1` unless you give a bind address.
+
+Write the specification as a separate word, as shown: `-LU spec`, not
+`-LUspec`.
+
 - Each local sender gets its own conversation, which is forgotten after two
   minutes of silence.
 - Datagrams of any size up to UDP's limit are forwarded. Ones larger than
   about 1200 bytes are split into fragments and reassembled at the other end.
 - Delivery is as unreliable as UDP: nothing is retransmitted. A datagram is
   never delivered twice.
-- There is no remote (server-listens) UDP forward.
 
 ### `--fragment-parity`
 
@@ -153,7 +166,8 @@ in the same order:
 |---|---|
 | `-L spec`, `--tcp-forward=spec` | `-L spec` |
 | `-R spec`, `--tcp-remote-forward=spec` | `-R spec` |
-| `-U spec`, `--udp-forward=spec` | `-U spec` |
+| `-LU spec`, `--udp-forward=spec` | `-LU spec` |
+| `-RU spec`, `--udp-remote-forward=spec` | `-RU spec` |
 | `--tcp-tun` | `-w` |
 | `--fragment-parity=mode` | `-F mode` |
 
@@ -173,7 +187,7 @@ Forwards live exactly as long as the mosh session. There is no equivalent of
 `ssh -N` or `ssh -f`.
 
 **The listening port is already in use.**
-`mosh-client` (for `-L`, `-U`) or `mosh-server` (for `-R`) exits with a
+`mosh-client` (for `-L`, `-LU`) or `mosh-server` (for `-R`, `-RU`) exits with a
 "bind" error instead of starting the session. Choose another port.
 
 **Large UDP datagrams go missing on a bad network.**

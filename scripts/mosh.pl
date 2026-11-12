@@ -72,6 +72,8 @@ my $bind_ip = undef;
 
 my @udp_forwards = ();
 
+my @udp_remote_forwards = ();
+
 my @tcp_forwards = ();
 
 my @tcp_remote_forwards = ();
@@ -124,11 +126,15 @@ qq{Usage: $0 [options] [--] [user@]host [command...]
         --bind-server={ssh|any|IP}  ask the server to reply from an IP address
                                        (default: "ssh")
 
--U [BIND_ADDRESS:]PORT:HOST:HOSTPORT
+-LU [BIND_ADDRESS:]PORT:HOST:HOSTPORT
         --udp-forward=[BIND_ADDRESS:]PORT:HOST:HOSTPORT
                              forward UDP datagrams sent to local PORT
                                 to HOST:HOSTPORT as seen from the server
                                 (may be repeated; needs support on the server)
+-RU [BIND_ADDRESS:]PORT:HOST:HOSTPORT
+        --udp-remote-forward=[BIND_ADDRESS:]PORT:HOST:HOSTPORT
+                             forward UDP datagrams sent to PORT on the
+                                server to HOST:HOSTPORT as seen from here
 
         --fragment-parity={auto|always|never}
                              whether to add parity to forwarded UDP
@@ -210,7 +216,8 @@ GetOptions( 'client=s' => \$client,
 	    'version' => \$version,
 	    'fake-proxy!' => \my $fake_proxy,
 	    'bind-server=s' => \$bind_ip,
-	    'udp-forward|U=s' => \@udp_forwards,
+	    'udp-forward|LU=s' => \@udp_forwards,
+	    'udp-remote-forward|RU=s' => \@udp_remote_forwards,
 	    'tcp-forward|L=s' => \@tcp_forwards,
 	    'tcp-remote-forward|R=s' => \@tcp_remote_forwards,
 	    'tcp-tun!' => \$tcp_tun,
@@ -440,7 +447,11 @@ if ( $pid == 0 ) { # child
   }
 
   for ( @udp_forwards ) {
-    push @server, ( '-U', $_ );
+    push @server, ( '-LU', $_ );
+  }
+
+  for ( @udp_remote_forwards ) {
+    push @server, ( '-RU', $_ );
   }
 
   for ( @tcp_forwards ) {
@@ -533,7 +544,8 @@ if ( $pid == 0 ) { # child
   $ENV{ 'MOSH_KEY' } = $key;
   $ENV{ 'MOSH_PREDICTION_DISPLAY' } = $predict;
   $ENV{ 'MOSH_NO_TERM_INIT' } = '1' if !$term_init;
-  exec {$client} ("$client", "-# @cmdline |", ( map { ( '-U', $_ ) } @udp_forwards ),
+  exec {$client} ("$client", "-# @cmdline |", ( map { ( '-LU', $_ ) } @udp_forwards ),
+		    ( map { ( '-RU', $_ ) } @udp_remote_forwards ),
 		    ( map { ( '-L', $_ ) } @tcp_forwards ),
 		    ( map { ( '-R', $_ ) } @tcp_remote_forwards ), ( $tcp_tun ? ( '-w' ) : () ),
 		    ( defined $fragment_parity ? ( '-F', $fragment_parity ) : () ), $ip, $port);

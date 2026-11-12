@@ -85,8 +85,8 @@ static void print_usage( FILE* file, const char* argv0 )
 {
   print_version( file );
   fprintf( file,
-           "\nUsage: %s [-# 'ARGS'] [-L [BIND:]PORT:HOST:HOSTPORT] [-R [BIND:]PORT:HOST:HOSTPORT]\n"
-           "       [-U [BIND:]PORT:HOST:HOSTPORT] [-w]\n"
+           "\nUsage: %s [-# 'ARGS'] [-L|-R|-LU|-RU [BIND:]PORT:HOST:HOSTPORT]\n"
+           "       [-w]\n"
            "       [-F auto|always|never] IP PORT\n"
            "       %s -c\n",
            argv0,
@@ -110,7 +110,7 @@ static void print_colorcount( void )
 int main( int argc, char* argv[] )
 {
   unsigned int verbose = 0;
-  std::vector<std::string> udp_forwards, tcp_forwards, tcp_remote_forwards;
+  std::vector<std::string> udp_forwards, udp_remote_forwards, tcp_forwards, tcp_remote_forwards;
   bool tcp_tun = false;
   std::string fragment_parity = "auto";
   /* For security, make sure we don't dump core */
@@ -132,7 +132,7 @@ int main( int argc, char* argv[] )
   }
 
   int opt;
-  while ( ( opt = getopt( argc, argv, "#:cvL:R:U:wF:" ) ) != -1 ) {
+  while ( ( opt = getopt( argc, argv, "#:cvL:R:wF:" ) ) != -1 ) {
     switch ( opt ) {
       case '#':
         // Ignore the original arguments to mosh wrapper
@@ -145,17 +145,28 @@ int main( int argc, char* argv[] )
         verbose++;
         break;
       case 'L':
-        /* forward TCP connections made to a local port, as ssh's -L does */
-        tcp_forwards.push_back( std::string( optarg ) );
+      case 'R': {
+        /*
+         * -L and -R forward TCP as ssh's do: from a local port to
+         * HOST:HOSTPORT at the server, or from a port on the server to
+         * HOST:HOSTPORT here.  -LU and -RU do the same for UDP; getopt
+         * sees those as -L or -R with the argument "U", and the
+         * specification is the word after.
+         */
+        const bool udp = strcmp( optarg, "U" ) == 0;
+        if ( udp && optind >= argc ) {
+          fprintf( stderr, "%s: -%cU needs a forwarding specification\n\n", argv[0], opt );
+          print_usage( stderr, argv[0] );
+          exit( 1 );
+        }
+        const std::string spec( udp ? argv[optind++] : optarg );
+        if ( opt == 'L' ) {
+          ( udp ? udp_forwards : tcp_forwards ).push_back( spec );
+        } else {
+          ( udp ? udp_remote_forwards : tcp_remote_forwards ).push_back( spec );
+        }
         break;
-      case 'R':
-        /* connect to HOST:HOSTPORT from here for TCP connections made to PORT on the server, as ssh's -R does */
-        tcp_remote_forwards.push_back( std::string( optarg ) );
-        break;
-      case 'U':
-        /* forward UDP datagrams sent to a local port */
-        udp_forwards.push_back( std::string( optarg ) );
-        break;
+      }
       case 'w':
         /* use a TUN device for TCP forwarding where possible */
         tcp_tun = true;
@@ -225,7 +236,8 @@ int main( int argc, char* argv[] )
                       tcp_forwards,
                       tcp_tun,
                       fragment_parity,
-                      tcp_remote_forwards );
+                      tcp_remote_forwards,
+                      udp_remote_forwards );
     client.init();
 
     try {

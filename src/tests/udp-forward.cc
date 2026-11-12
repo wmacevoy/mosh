@@ -46,6 +46,7 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
+#include "src/network/forwarding.h"
 #include "src/network/udpforward.h"
 #include "src/util/timestamp.h"
 
@@ -590,6 +591,87 @@ static void test_relay( void )
   close( app[1] );
 }
 
+/* A remote forward (-RU) is a forward with the ends exchanged: the server listens, the client relays. */
+static void test_remote( void )
+{
+  uint16_t target_port;
+  const int target = udp_socket( target_port );
+  uint16_t local_port, remote_port;
+  close( udp_socket( local_port ) );
+  close( udp_socket( remote_port ) );
+
+  char spec[64];
+  snprintf( spec, sizeof( spec ), "%d:127.0.0.1:%d", local_port, target_port );
+  const std::vector<std::string> local_specs( 1, spec );
+  snprintf( spec, sizeof( spec ), "%d:127.0.0.1:%d", remote_port, target_port );
+  const std::vector<std::string> remote_specs( 1, spec );
+  const std::vector<std::string> none;
+
+  /* each end has both kinds, sharing one side channel */
+  TestLink to_server, to_client;
+  Forwarding client( &to_server, true, local_specs, none, false, none, remote_specs );
+  Forwarding server( &to_client, false, local_specs, none, false, none, remote_specs );
+  to_server.peer = server.sink();
+  to_client.peer = client.sink();
+
+  /* the client listens for the local forward and the server for the remote one */
+  CHECK( client.fds().size() == 1 && server.fds().size() == 1 );
+
+  uint16_t app_port;
+  const int app = udp_socket( app_port );
+
+  for ( int remote = 1; remote >= 0; remote-- ) {
+    Forwarding& listener = remote ? server : client;
+    Forwarding& relay = remote ? client : server;
+    TestLink& outward = remote ? to_client : to_server;
+    const int listen_fd = listener.fds().at( 0 );
+
+    for ( int large = 0; large < 2; large++ ) {
+      const std::string request
+        = large ? varied( 5000 ) : std::string( remote ? "to the remote port" : "to the local port" );
+      const size_t crossed = outward.sent.size();
+      send_to_port( app, remote ? remote_port : local_port, request );
+      CHECK( readable( listen_fd ) );
+      listener.read_fd( listen_fd );
+      CHECK( outward.sent.size() == crossed + ( large ? 5 : 1 ) );
+      CHECK( readable( target ) );
+      struct sockaddr_in from;
+      CHECK( receive( target, &from ) == request );
+
+      /* and back again */
+      const std::string reply = large ? varied( 4000 ) : std::string( "reply" );
+      CHECK( sendto( target,
+                     reply.data(),
+                     reply.size(),
+                     0,
+                     reinterpret_cast<struct sockaddr*>( &from ),
+                     sizeof( from ) )
+             == static_cast<ssize_t>( reply.size() ) );
+      const std::vector<int> fds = relay.fds();
+      std::vector<struct pollfd> polls( fds.size() );
+      for ( size_t i = 0; i < fds.size(); i++ ) {
+        polls[i].fd = fds[i];
+        polls[i].events = POLLIN;
+        polls[i].revents = 0;
+      }
+      CHECK( poll( polls.data(), polls.size(), 2000 ) == 1 );
+      for ( size_t i = 0; i < fds.size(); i++ ) {
+        if ( polls[i].revents ) {
+          relay.read_fd( fds[i] );
+        }
+      }
+      CHECK( readable( app ) );
+      struct sockaddr_in back;
+      CHECK( receive( app, &back ) == reply );
+      CHECK( ntohs( back.sin_port ) == ( remote ? remote_port : local_port ) );
+    }
+  }
+  CHECK( !readable( target, 50 ) && !readable( app, 50 ) );
+
+  close( target );
+  close( app );
+}
+
 /*
  * A connection works out how much of what is sent to it goes missing,
  * from the sequence numbers.  All connections in a process draw their
@@ -644,5 +726,6 @@ int main()
   test_fragments();
   test_loss_measurement();
   test_relay();
+  test_remote();
   return EXIT_SUCCESS;
 }

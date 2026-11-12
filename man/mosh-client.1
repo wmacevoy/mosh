@@ -23,7 +23,8 @@ MOSH_KEY=KEY
 [\-v]
 [\-L \fR[\fP\fIBIND\fP:\fR]\fP\fIPORT\fP:\fIHOST\fP:\fIHOSTPORT\fP]
 [\-R \fR[\fP\fIBIND\fP:\fR]\fP\fIPORT\fP:\fIHOST\fP:\fIHOSTPORT\fP]
-[\-U \fR[\fP\fIBIND\fP:\fR]\fP\fIPORT\fP:\fIHOST\fP:\fIHOSTPORT\fP]
+[\-LU \fR[\fP\fIBIND\fP:\fR]\fP\fIPORT\fP:\fIHOST\fP:\fIHOSTPORT\fP]
+[\-RU \fR[\fP\fIBIND\fP:\fR]\fP\fIPORT\fP:\fIHOST\fP:\fIHOSTPORT\fP]
 [\-w]
 [\-F auto|always|never]
 IP PORT
@@ -53,8 +54,9 @@ other than SSH, it may be necessary to invoke \fBmosh-client\fP
 directly.
 
 The \-L option forwards TCP connections made to a local port through
-the session, the \-R option connects those made to a port on the
-server, and the \-U option forwards UDP datagrams, as described in
+the session, and the \-R option connects those made to a port on the
+server; the \-LU and \-RU options do the same for UDP datagrams (the
+specification being a separate word after the option), as described in
 .BR mosh (1).
 \fBmosh-server\fP must be given the same specifications in the same order.
 The \-w option is \fB\-\-tcp\-tun\fP, and the \-F option takes the mode

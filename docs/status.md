@@ -35,7 +35,7 @@ failures and 2 skips, as before, plus the new unit tests).
 | TCP `-L` with a TUN device at the client, the server, or both | Correct, including at 2% loss (run inside an unprivileged network namespace) |
 | `--tcp-tun` without privileges | Both ends fall back to the adapter and say so |
 | TCP `-R` | The same checks pass, clean and at 2% loss |
-| UDP `-U` | Datagrams from 1 byte to 65,507 bytes echoed correctly |
+| UDP `-LU` and `-RU` | Datagrams from 1 byte to 65,507 bytes echoed correctly |
 | UDP, 3000-byte datagrams, 5% loss | Request/reply pairs complete 76% of the time without parity, 97.5% with it, 95.5% in `auto` |
 | UDP, 5000-byte datagrams, 1% loss | 89.6% without parity, 99.0% in `auto` |
 | New client with an old server, and old client with a new server | Terminal works normally; nothing is forwarded |
@@ -75,8 +75,8 @@ server, only targets on the server itself are reached through the device.
 The interface MTU is set once, so if mosh later lowers its own packet size
 the kernel's segments may no longer fit.
 
-**Counts.** Up to 16 forwards of each kind, 64 simultaneous TCP connections
-per direction, and 64 UDP conversations.
+**Counts.** Up to 16 forwards of each kind, and 64 simultaneous TCP
+connections and 64 UDP conversations in each direction.
 
 **Forwards end with the session.** There is no way to keep a forward without
 a terminal, and no way to add or remove one while the session runs.
@@ -91,6 +91,5 @@ no security review.
 
 - `-D`, a SOCKS proxy. It needs asynchronous DNS resolution in `mosh-server`,
   which mosh does not have, and would lean hard on the built-in TCP.
-- Remote UDP forwarding.
 - Forwarding of Unix-domain sockets, X11, or the ssh agent.
 - A TUN device for `-R`.

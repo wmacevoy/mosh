@@ -44,7 +44,7 @@ Every side-channel datagram carries a 13-byte header:
 | Bytes | Field |
 |---|---|
 | 1 | `0xFF` |
-| 1 | type: UDP datagram, UDP fragment, TCP segment (`-L`), TCP segment (`-R`) |
+| 1 | type: UDP datagram, UDP fragment or TCP segment, each for a local or a remote forward |
 | 1 | which forward (index into the list both ends were given) |
 | 2 | which conversation within that forward |
 | 8 | sequence number |
@@ -62,7 +62,7 @@ discards anything it has seen before or that is too old to judge.
 
 ## UDP forwarding
 
-The client listens on the local port. Each distinct sender is given a
+For a local forward, the client listens on the local port. Each distinct sender is given a
 conversation number, and its datagrams are sent to the server, which opens
 one socket per conversation and re-sends them to the target. Replies come
 back the same way and are delivered to the original sender from the listening
@@ -189,7 +189,8 @@ kernel's own TCP is then the endpoint, and mosh is only a relay.
 `-R` is `-L` with the ends exchanged: the server listens and the client
 connects. It is implemented as a second pair of forwarders with the roles the
 other way round, using a different frame type so the two directions share the
-side channel without confusion.
+side channel without confusion. `-RU` is `-LU` reversed in exactly the same
+way.
 
 ## Why not something else?
 

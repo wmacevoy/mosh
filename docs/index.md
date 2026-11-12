@@ -7,12 +7,13 @@ title: Port forwarding for mosh
 # Port forwarding for mosh
 
 This branch of [mosh](https://mosh.org) adds **experimental port forwarding**:
-TCP in both directions and UDP, carried inside the mosh session.
+TCP and UDP, each in both directions, carried inside the mosh session.
 
 ```
 mosh -L 8080:localhost:80 user@server      # TCP, like ssh -L
 mosh -R 9000:localhost:3000 user@server    # TCP the other way, like ssh -R
-mosh -U 5353:10.0.0.53:53 user@server      # UDP
+mosh -LU 5353:10.0.0.53:53 user@server     # UDP
+mosh -RU 6000:localhost:6000 user@server   # UDP the other way
 ```
 
 It is a prototype. It works and is tested, but it has not been reviewed by the
@@ -25,7 +26,8 @@ mosh maintainers and is not part of any mosh release. See
 |---|---|---|
 | `-L [bind:]port:host:hostport` | TCP connections made to a port on **your machine**, to `host:hostport` as seen from the server | `ssh -L` |
 | `-R [bind:]port:host:hostport` | TCP connections made to a port on **the server**, to `host:hostport` as seen from your machine | `ssh -R` |
-| `-U [bind:]port:host:hostport` | UDP datagrams sent to a port on your machine, to `host:hostport` as seen from the server | none |
+| `-LU [bind:]port:host:hostport` | UDP datagrams sent to a port on **your machine**, to `host:hostport` as seen from the server | none |
+| `-RU [bind:]port:host:hostport` | UDP datagrams sent to a port on **the server**, to `host:hostport` as seen from your machine | none |
 | `--tcp-tun` | Use a TUN network device for `-L`, so the operating system's own TCP carries the connection | `ssh -w` (loosely) |
 | `--fragment-parity=MODE` | Whether large UDP datagrams get parity so they survive a lost fragment: `auto` (the default), `always` or `never` | none |
 
