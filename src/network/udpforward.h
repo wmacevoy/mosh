@@ -34,6 +34,8 @@
 #define UDPFORWARD_HPP
 
 #include <cstdint>
+#include <deque>
+#include <map>
 #include <string>
 #include <vector>
 
@@ -51,9 +53,14 @@
  * local sender.
  *
  * Delivery is exactly as unreliable as UDP itself: nothing is
- * retransmitted or reordered.  A datagram that does not fit in a single
- * mosh datagram is dropped (there is no fragmentation).  A datagram is
- * never delivered more than once, even if an attacker replays it.
+ * retransmitted or reordered.  A datagram is never delivered more than
+ * once, even if an attacker replays it.
+ *
+ * A datagram that does not fit in a single mosh datagram is sent as
+ * several fragments and put back together at the other end (see
+ * DatagramAssembly).  If a fragment is lost, so is the datagram, unless
+ * the sender was asked to add parity fragments, from which the receiver
+ * can rebuild one lost fragment in every group of eight.
  *
  * Both ends are given the same list of forwarding specifications, so
  * nothing but data needs to cross the network: a forwarded datagram
@@ -93,6 +100,67 @@ public:
   bool accept( uint64_t seq );
 };
 
+/*
+ * Fragmentation of one datagram.
+ *
+ * The datagram is cut into "count" pieces of as nearly equal size as
+ * possible (so that parity costs as little as possible).  Each travels
+ * with a 4-byte header: its index, the count, and the datagram's total
+ * length, from which the receiver knows every piece's size and place.
+ *
+ * With parity, the pieces are taken in groups of PARITY_GROUP, and each
+ * group is followed (at index count + group number) by the exclusive-or
+ * of its pieces.  Any one piece of a group can be rebuilt from the
+ * others and the parity, so the datagram survives the loss of one
+ * fragment per group.
+ */
+class DatagramAssembly
+{
+public:
+  static constexpr size_t FRAGMENT_HEADER_LEN = 4;
+  static constexpr unsigned int PARITY_GROUP = 8;
+  static constexpr unsigned int MAX_FRAGMENTS = 255; /* pieces and parity together */
+  static constexpr size_t MAX_DATAGRAM = 65535;
+
+  enum Result
+  {
+    REJECTED,   /* malformed, or doesn't belong to this datagram */
+    INCOMPLETE, /* accepted; more are needed */
+    COMPLETE    /* the datagram has been rebuilt */
+  };
+
+private:
+  unsigned int count; /* 0 until the first fragment arrives */
+  size_t total;
+  std::vector<std::string> parts; /* pieces, then parity */
+  std::vector<bool> have;
+
+  static unsigned int groups( unsigned int count ) { return ( count + PARITY_GROUP - 1 ) / PARITY_GROUP; }
+  static size_t piece_len( size_t total, unsigned int count, unsigned int index );
+  static size_t piece_offset( size_t total, unsigned int count, unsigned int index );
+
+  bool rebuild( std::string& datagram, bool& used_parity );
+
+public:
+  DatagramAssembly() : count( 0 ), total( 0 ), parts(), have() {}
+
+  /* True until a fragment has been accepted. */
+  bool empty( void ) const { return count == 0; }
+
+  /*
+   * Cut a datagram into fragments (header included) of at most
+   * max_fragment bytes each, in the order they should be sent.
+   * Returns nothing if that can't be done.
+   */
+  static std::vector<std::string> split( const std::string& datagram, size_t max_fragment, bool parity );
+
+  /* The index a fragment claims, which is also how far its sequence number is from the first one's. */
+  static bool index_of( const std::string& fragment, unsigned int& index );
+
+  /* On COMPLETE, fills in the datagram and whether parity was needed to rebuild it. */
+  Result add( const std::string& fragment, std::string& datagram, bool& used_parity );
+};
+
 class UDPForwarder : public SideChannelSink
 {
 public:
@@ -106,6 +174,12 @@ public:
   static constexpr size_t HEADER_LEN = 13;
   static constexpr uint8_t TYPE_UDP_DATA = 0;
   static constexpr uint8_t TYPE_TCP_SEGMENT = 1; /* see tcpforward.h */
+  static constexpr uint8_t TYPE_UDP_FRAGMENT = 2;
+
+  /* Datagrams being put back together: how many at once, and for how long. */
+  static constexpr size_t MAX_PARTIALS = 64;
+  static constexpr uint64_t REASSEMBLY_TIMEOUT = 1000; /* ms */
+  static constexpr size_t MAX_REMEMBERED = 256;
 
   static constexpr size_t MAX_FORWARDS = 16;
   static constexpr size_t MAX_FLOWS = 64;
@@ -155,9 +229,20 @@ private:
     Flow() : forward( 0 ), id( 0 ), fd( -1 ), peer(), peer_len( 0 ), last_used( 0 ) {}
   };
 
+  struct Partial
+  {
+    DatagramAssembly assembly;
+    uint8_t forward;
+    uint16_t flow_id;
+    uint64_t started;
+
+    Partial() : assembly(), forward( 0 ), flow_id( 0 ), started( 0 ) {}
+  };
+
   SideChannelLink* link;
   Role role;
   unsigned int verbose;
+  bool fragment_parity;
 
   std::vector<Forward> forwards;
   std::vector<Flow> flows;
@@ -166,7 +251,20 @@ private:
   uint64_t next_seq;
   ReplayWindow replay;
 
+  /*
+   * Fragments of a datagram are sent with consecutive sequence numbers,
+   * so the first one's number (a fragment's own, less its index) names
+   * the datagram.
+   */
+  std::map<uint64_t, Partial> partials;
+  std::deque<uint64_t> finished; /* recently rebuilt, so stragglers don't start them again */
+
   uint64_t dropped_oversize;
+  uint64_t fragmented, reassembled, recovered, abandoned;
+
+  void expire_partials( uint64_t now );
+  void fragment_recv( uint8_t forward, uint16_t flow_id, uint64_t seq, const std::string& fragment, uint64_t now );
+  void deliver( uint8_t forward, uint16_t flow_id, const std::string& datagram, uint64_t now );
 
   void expire_flows( uint64_t now );
   void remove_flow( size_t index );
@@ -184,6 +282,9 @@ public:
 
   void set_verbose( unsigned int s_verbose ) { verbose = s_verbose; }
 
+  /* Whether to add parity to the datagrams we fragment.  (What we receive may have it regardless.) */
+  void set_fragment_parity( bool s_parity ) { fragment_parity = s_parity; }
+
   /* Sockets to poll for reading; pass each readable one to read_fd(). */
   std::vector<int> fds( void ) const;
   void read_fd( int fd );
@@ -193,6 +294,13 @@ public:
 
   size_t flow_count( void ) const { return flows.size(); }
   uint64_t get_dropped_oversize( void ) const { return dropped_oversize; }
+
+  /* Datagrams we sent in fragments; and of those received so: rebuilt, rebuilt using parity, given up on. */
+  uint64_t get_fragmented( void ) const { return fragmented; }
+  uint64_t get_reassembled( void ) const { return reassembled; }
+  uint64_t get_recovered( void ) const { return recovered; }
+  uint64_t get_abandoned( void ) const { return abandoned; }
+  size_t partial_count( void ) const { return partials.size(); }
 };
 
 }

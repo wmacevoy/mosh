@@ -32,6 +32,7 @@
 
 #include "src/include/config.h"
 
+#include <algorithm>
 #include <cerrno>
 #include <cstdio>
 #include <cstdlib>
@@ -130,6 +131,151 @@ bool ReplayWindow::accept( uint64_t seq )
     return false;
   }
   seen[seq % WINDOW] = true;
+  return true;
+}
+
+/* Pieces are as equal as can be: the first (total % count) of them are one byte longer than the rest. */
+size_t DatagramAssembly::piece_len( size_t total, unsigned int count, unsigned int index )
+{
+  if ( index >= count ) {
+    return ( total + count - 1 ) / count; /* parity is as long as the longest piece */
+  }
+  return total / count + ( index < total % count ? 1 : 0 );
+}
+
+size_t DatagramAssembly::piece_offset( size_t total, unsigned int count, unsigned int index )
+{
+  return index * ( total / count ) + std::min<size_t>( index, total % count );
+}
+
+static std::string fragment_header( unsigned int index, unsigned int count, size_t total )
+{
+  const char header[DatagramAssembly::FRAGMENT_HEADER_LEN]
+    = { static_cast<char>( index ), static_cast<char>( count ), static_cast<char>( total >> 8 ),
+        static_cast<char>( total & 0xFF ) };
+  return std::string( header, sizeof( header ) );
+}
+
+static void xor_into( std::string& parity, const std::string& piece )
+{
+  for ( size_t i = 0; i < piece.size() && i < parity.size(); i++ ) {
+    parity[i] ^= piece[i];
+  }
+}
+
+std::vector<std::string> DatagramAssembly::split( const std::string& datagram, size_t max_fragment, bool parity )
+{
+  std::vector<std::string> ret;
+  const size_t total = datagram.size();
+
+  if ( max_fragment <= FRAGMENT_HEADER_LEN || total > MAX_DATAGRAM ) {
+    return ret;
+  }
+  const size_t max_piece = max_fragment - FRAGMENT_HEADER_LEN;
+  const size_t count = std::max<size_t>( 2, ( total + max_piece - 1 ) / max_piece );
+  if ( total < count || count + ( parity ? groups( count ) : 0 ) > MAX_FRAGMENTS ) {
+    return ret;
+  }
+
+  for ( unsigned int i = 0; i < count; i++ ) {
+    ret.push_back( fragment_header( i, count, total )
+                   + datagram.substr( piece_offset( total, count, i ), piece_len( total, count, i ) ) );
+  }
+
+  if ( parity ) {
+    for ( unsigned int g = 0; g < groups( count ); g++ ) {
+      std::string sum( piece_len( total, count, count ), '\0' );
+      for ( unsigned int i = g * PARITY_GROUP; i < count && i < ( g + 1 ) * PARITY_GROUP; i++ ) {
+        xor_into( sum, datagram.substr( piece_offset( total, count, i ), piece_len( total, count, i ) ) );
+      }
+      ret.push_back( fragment_header( count + g, count, total ) + sum );
+    }
+  }
+
+  return ret;
+}
+
+bool DatagramAssembly::index_of( const std::string& fragment, unsigned int& index )
+{
+  if ( fragment.size() < FRAGMENT_HEADER_LEN ) {
+    return false;
+  }
+  index = static_cast<uint8_t>( fragment[0] );
+  return true;
+}
+
+DatagramAssembly::Result DatagramAssembly::add( const std::string& fragment,
+                                                std::string& datagram,
+                                                bool& used_parity )
+{
+  if ( fragment.size() < FRAGMENT_HEADER_LEN ) {
+    return REJECTED;
+  }
+  const unsigned int index = static_cast<uint8_t>( fragment[0] );
+  const unsigned int its_count = static_cast<uint8_t>( fragment[1] );
+  const size_t its_total = ( static_cast<uint8_t>( fragment[2] ) << 8 ) | static_cast<uint8_t>( fragment[3] );
+
+  if ( its_count < 2 || its_total < its_count || index >= its_count + groups( its_count )
+       || its_count + groups( its_count ) > MAX_FRAGMENTS
+       || fragment.size() - FRAGMENT_HEADER_LEN != piece_len( its_total, its_count, index ) ) {
+    return REJECTED;
+  }
+
+  if ( count == 0 ) {
+    count = its_count;
+    total = its_total;
+    parts.resize( count + groups( count ) );
+    have.resize( count + groups( count ), false );
+  } else if ( its_count != count || its_total != total ) {
+    return REJECTED;
+  }
+
+  if ( !have[index] ) {
+    parts[index].assign( fragment, FRAGMENT_HEADER_LEN, std::string::npos );
+    have[index] = true;
+  }
+
+  return rebuild( datagram, used_parity ) ? COMPLETE : INCOMPLETE;
+}
+
+bool DatagramAssembly::rebuild( std::string& datagram, bool& used_parity )
+{
+  /* Is every group whole, or one piece short with its parity in hand? */
+  for ( unsigned int g = 0; g < groups( count ); g++ ) {
+    unsigned int missing = 0;
+    for ( unsigned int i = g * PARITY_GROUP; i < count && i < ( g + 1 ) * PARITY_GROUP; i++ ) {
+      missing += have[i] ? 0 : 1;
+    }
+    if ( missing > 1 || ( missing == 1 && !have[count + g] ) ) {
+      return false;
+    }
+  }
+
+  used_parity = false;
+  for ( unsigned int g = 0; g < groups( count ); g++ ) {
+    for ( unsigned int lost = g * PARITY_GROUP; lost < count && lost < ( g + 1 ) * PARITY_GROUP; lost++ ) {
+      if ( have[lost] ) {
+        continue;
+      }
+      /* the parity, less every piece we do have, is the one we don't */
+      std::string piece = parts[count + g];
+      for ( unsigned int i = g * PARITY_GROUP; i < count && i < ( g + 1 ) * PARITY_GROUP; i++ ) {
+        if ( i != lost ) {
+          xor_into( piece, parts[i] );
+        }
+      }
+      piece.resize( piece_len( total, count, lost ) );
+      parts[lost] = piece;
+      have[lost] = true;
+      used_parity = true;
+    }
+  }
+
+  datagram.clear();
+  datagram.reserve( total );
+  for ( unsigned int i = 0; i < count; i++ ) {
+    datagram += parts[i];
+  }
   return true;
 }
 
@@ -233,8 +379,9 @@ private:
 }
 
 UDPForwarder::UDPForwarder( SideChannelLink* s_link, Role s_role, const std::vector<std::string>& specs )
-  : link( s_link ), role( s_role ), verbose( 0 ), forwards(), flows(), next_flow_id( 0 ), next_seq( 0 ), replay(),
-    dropped_oversize( 0 )
+  : link( s_link ), role( s_role ), verbose( 0 ), fragment_parity( false ), forwards(), flows(), next_flow_id( 0 ),
+    next_seq( 0 ), replay(), partials(), finished(), dropped_oversize( 0 ), fragmented( 0 ), reassembled( 0 ),
+    recovered( 0 ), abandoned( 0 )
 {
   if ( specs.size() > MAX_FORWARDS ) {
     throw NetworkException( "UDP forwarding: too many forwarding specifications", 0 );
@@ -381,19 +528,34 @@ void UDPForwarder::to_network( Flow& flow, const char* data, size_t len )
     return; /* peer doesn't (yet) support forwarding, or we're not connected */
   }
 
-  if ( HEADER_LEN + len > link->sidechannel_max_payload() ) {
-    /* no fragmentation: a datagram that doesn't fit is lost */
+  const size_t limit = link->sidechannel_max_payload();
+  const std::string datagram( data, len );
+
+  if ( HEADER_LEN + len <= limit ) {
+    link->sidechannel_send( encode( flow.forward, flow.id, next_seq++, datagram ) );
+    return;
+  }
+
+  /* Too big to go in one piece. */
+  std::vector<std::string> fragments;
+  if ( limit > HEADER_LEN ) {
+    fragments = DatagramAssembly::split( datagram, limit - HEADER_LEN, fragment_parity );
+  }
+  if ( fragments.empty() ) {
     if ( verbose && !dropped_oversize ) {
       fprintf( stderr,
-               "UDP forwarding: dropping %d-byte datagram (limit is %d)\n",
-               static_cast<int>( len ),
-               static_cast<int>( link->sidechannel_max_payload() - HEADER_LEN ) );
+               "UDP forwarding: dropping %d-byte datagram (too many fragments)\n",
+               static_cast<int>( len ) );
     }
     dropped_oversize++;
     return;
   }
 
-  link->sidechannel_send( encode( flow.forward, flow.id, next_seq++, std::string( data, len ) ) );
+  /* The receiver relies on these sequence numbers being consecutive. */
+  for ( std::vector<std::string>::const_iterator i = fragments.begin(); i != fragments.end(); i++ ) {
+    link->sidechannel_send( encode_frame( TYPE_UDP_FRAGMENT, flow.forward, flow.id, next_seq++, *i ) );
+  }
+  fragmented++;
 }
 
 void UDPForwarder::read_fd( int fd )
@@ -475,12 +637,13 @@ void UDPForwarder::read_fd( int fd )
 
 void UDPForwarder::sidechannel_recv( const std::string& payload )
 {
-  uint8_t forward;
+  uint8_t type, forward;
   uint16_t flow_id;
   uint64_t seq;
-  std::string datagram;
+  std::string data;
 
-  if ( !decode( payload, forward, flow_id, seq, datagram ) || forward >= forwards.size() ) {
+  if ( !decode_frame( payload, type, forward, flow_id, seq, data ) || forward >= forwards.size()
+       || ( type != TYPE_UDP_DATA && type != TYPE_UDP_FRAGMENT ) ) {
     return;
   }
 
@@ -492,6 +655,84 @@ void UDPForwarder::sidechannel_recv( const std::string& payload )
 
   const uint64_t now = timestamp();
 
+  if ( type == TYPE_UDP_FRAGMENT ) {
+    fragment_recv( forward, flow_id, seq, data, now );
+  } else {
+    deliver( forward, flow_id, data, now );
+  }
+}
+
+void UDPForwarder::expire_partials( uint64_t now )
+{
+  for ( std::map<uint64_t, Partial>::iterator i = partials.begin(); i != partials.end(); ) {
+    if ( now - i->second.started > REASSEMBLY_TIMEOUT ) {
+      partials.erase( i++ ); /* a fragment was lost, and with it the datagram */
+      abandoned++;
+    } else {
+      i++;
+    }
+  }
+}
+
+void UDPForwarder::fragment_recv( uint8_t forward,
+                                  uint16_t flow_id,
+                                  uint64_t seq,
+                                  const std::string& fragment,
+                                  uint64_t now )
+{
+  unsigned int index;
+  if ( !DatagramAssembly::index_of( fragment, index ) ) {
+    return;
+  }
+  const uint64_t first_seq = seq - index;
+
+  if ( std::find( finished.begin(), finished.end(), first_seq ) != finished.end() ) {
+    return; /* already rebuilt without this one (typically, parity that wasn't needed) */
+  }
+
+  expire_partials( now );
+
+  std::map<uint64_t, Partial>::iterator i = partials.find( first_seq );
+  if ( i == partials.end() ) {
+    if ( partials.size() >= MAX_PARTIALS ) {
+      partials.erase( partials.begin() ); /* the oldest */
+      abandoned++;
+    }
+    Partial fresh;
+    fresh.forward = forward;
+    fresh.flow_id = flow_id;
+    fresh.started = now;
+    i = partials.insert( std::make_pair( first_seq, fresh ) ).first;
+  } else if ( i->second.forward != forward || i->second.flow_id != flow_id ) {
+    return;
+  }
+
+  std::string datagram;
+  bool used_parity = false;
+  switch ( i->second.assembly.add( fragment, datagram, used_parity ) ) {
+    case DatagramAssembly::COMPLETE:
+      partials.erase( i );
+      finished.push_back( first_seq );
+      if ( finished.size() > MAX_REMEMBERED ) {
+        finished.pop_front();
+      }
+      reassembled++;
+      recovered += used_parity ? 1 : 0;
+      deliver( forward, flow_id, datagram, now );
+      break;
+    case DatagramAssembly::REJECTED:
+      if ( i->second.assembly.empty() ) {
+        partials.erase( i ); /* don't let junk hold a place */
+      }
+      break;
+    case DatagramAssembly::INCOMPLETE:
+      break;
+  }
+}
+
+/* A whole datagram from the other end: pass it on. */
+void UDPForwarder::deliver( uint8_t forward, uint16_t flow_id, const std::string& datagram, uint64_t now )
+{
   Flow* flow = NULL;
   for ( std::vector<Flow>::iterator i = flows.begin(); i != flows.end(); i++ ) {
     if ( i->forward == forward && i->id == flow_id ) {

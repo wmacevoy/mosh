@@ -38,6 +38,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <deque>
+#include <vector>
 
 #include <arpa/inet.h>
 #include <netinet/in.h>
@@ -46,6 +47,7 @@
 #include <unistd.h>
 
 #include "src/network/udpforward.h"
+#include "src/util/timestamp.h"
 
 using namespace Network;
 
@@ -159,6 +161,119 @@ static void test_replay( void )
   CHECK( z.accept( 100 * W - 1 ) );
 }
 
+static std::string varied( size_t n )
+{
+  std::string s( n, '\0' );
+  for ( size_t i = 0; i < n; i++ ) {
+    s[i] = static_cast<char>( ( i * 2654435761u ) >> 11 );
+  }
+  return s;
+}
+
+/* Puts fragments back together, leaving out those listed.  True if that rebuilt the datagram. */
+static bool reassembles( const std::vector<std::string>& fragments,
+                         const std::string& expect,
+                         int skip_a = -1,
+                         int skip_b = -1,
+                         bool backwards = false,
+                         bool* used_parity = NULL )
+{
+  DatagramAssembly assembly;
+  std::string out;
+  bool parity = false;
+  bool complete = false;
+  for ( size_t n = 0; n < fragments.size(); n++ ) {
+    const int i = backwards ? fragments.size() - 1 - n : n;
+    if ( i == skip_a || i == skip_b ) {
+      continue;
+    }
+    const DatagramAssembly::Result r = assembly.add( fragments[i], out, parity );
+    CHECK( r != DatagramAssembly::REJECTED );
+    if ( r == DatagramAssembly::COMPLETE ) {
+      CHECK( out == expect );
+      complete = true;
+      break;
+    }
+  }
+  if ( used_parity ) {
+    *used_parity = parity;
+  }
+  return complete;
+}
+
+static void test_fragments( void )
+{
+  const size_t H = DatagramAssembly::FRAGMENT_HEADER_LEN;
+
+  /* pieces are as equal as possible, and never over the limit */
+  const std::string d = varied( 2500 );
+  std::vector<std::string> f = DatagramAssembly::split( d, 1000 + H, false );
+  CHECK( f.size() == 3 );
+  CHECK( f[0].size() == 834 + H && f[1].size() == 833 + H && f[2].size() == 833 + H );
+  CHECK( reassembles( f, d ) && reassembles( f, d, -1, -1, true ) );
+  CHECK( !reassembles( f, d, 0 ) && !reassembles( f, d, 1 ) && !reassembles( f, d, 2 ) );
+
+  /* one parity fragment, as long as the longest piece; any one fragment can go missing */
+  f = DatagramAssembly::split( d, 1000 + H, true );
+  CHECK( f.size() == 4 && f[3].size() == 834 + H );
+  for ( int lost = 0; lost < 4; lost++ ) {
+    bool parity;
+    CHECK( reassembles( f, d, lost, -1, false, &parity ) && parity == ( lost < 3 ) );
+    CHECK( reassembles( f, d, lost, -1, true ) );
+  }
+  CHECK( !reassembles( f, d, 0, 1 ) && !reassembles( f, d, 1, 3 ) && !reassembles( f, d, 0, 2 ) );
+
+  /* every length around a boundary, with every single loss */
+  for ( size_t len = 195; len <= 405; len++ ) {
+    const std::string x = varied( len );
+    f = DatagramAssembly::split( x, 100 + H, true );
+    CHECK( f.size() == ( len + 99 ) / 100 + 1 || len <= 100 );
+    for ( size_t i = 0; i < f.size(); i++ ) {
+      CHECK( f[i].size() <= 100 + H );
+      CHECK( reassembles( f, x, i ) );
+    }
+  }
+
+  /* more than eight pieces: a parity fragment for each group of eight */
+  const std::string big = varied( 20 * 500 );
+  f = DatagramAssembly::split( big, 500 + H, true );
+  CHECK( f.size() == 20 + 3 );
+  CHECK( reassembles( f, big ) );
+  CHECK( reassembles( f, big, 0, 8 ) );   /* one from each of two groups */
+  CHECK( reassembles( f, big, 7, 19 ) );
+  CHECK( !reassembles( f, big, 0, 7 ) );  /* two from one group */
+  CHECK( !reassembles( f, big, 16, 19 ) );
+  CHECK( !reassembles( f, big, 3, 20 ) ); /* a piece and its own group's parity */
+  CHECK( reassembles( f, big, 3, 21 ) );  /* a piece and another group's parity */
+
+  /* what can't be done */
+  CHECK( DatagramAssembly::split( d, H, false ).empty() );
+  CHECK( DatagramAssembly::split( varied( 65507 ), 100 + H, false ).empty() ); /* too many fragments */
+  CHECK( DatagramAssembly::split( varied( 65507 ), 500 + H, true ).size() == 132 + 17 );
+
+  /* junk, and fragments of something else, are refused without disturbing what is there */
+  f = DatagramAssembly::split( d, 1000 + H, true );
+  const std::vector<std::string> other = DatagramAssembly::split( varied( 2400 ), 1000 + H, true );
+  DatagramAssembly a;
+  std::string out;
+  bool parity;
+  CHECK( a.empty() );
+  CHECK( a.add( "", out, parity ) == DatagramAssembly::REJECTED );
+  /* the wrong length for its place */
+  CHECK( a.add( f[0].substr( 0, f[0].size() - 1 ), out, parity ) == DatagramAssembly::REJECTED );
+  /* an index beyond the pieces and parity */
+  CHECK( a.add( std::string( "\x05\x03\x09\xC4", 4 ) + std::string( 834, 'x' ), out, parity )
+         == DatagramAssembly::REJECTED );
+  /* a count of one: not fragmented at all */
+  CHECK( a.add( std::string( "\x00\x01\x00\x05hello", 9 ), out, parity ) == DatagramAssembly::REJECTED );
+  CHECK( a.empty() );
+  CHECK( a.add( f[0], out, parity ) == DatagramAssembly::INCOMPLETE && !a.empty() );
+  CHECK( a.add( other[1], out, parity ) == DatagramAssembly::REJECTED );
+  CHECK( a.add( f[0], out, parity ) == DatagramAssembly::INCOMPLETE ); /* a duplicate changes nothing */
+  CHECK( a.add( f[2], out, parity ) == DatagramAssembly::INCOMPLETE );
+  CHECK( a.add( f[3], out, parity ) == DatagramAssembly::COMPLETE && out == d && parity );
+}
+
 /* Joins two forwarders, standing in for an established mosh session. */
 class TestLink : public SideChannelLink
 {
@@ -167,14 +282,18 @@ public:
   bool ready;
   size_t max_payload;
   std::deque<std::string> sent; /* everything that crossed, for replaying */
+  int lose;                     /* lose the datagram this many sends from now (0 is the next); -1 for none */
 
-  TestLink() : peer( NULL ), ready( true ), max_payload( 1200 ), sent() {}
+  TestLink() : peer( NULL ), ready( true ), max_payload( 1200 ), sent(), lose( -1 ) {}
 
   bool sidechannel_ready( void ) const { return ready; }
   size_t sidechannel_max_payload( void ) const { return max_payload; }
   void sidechannel_send( const std::string& payload )
   {
     sent.push_back( payload );
+    if ( lose >= 0 && lose-- == 0 ) {
+      return;
+    }
     peer->sidechannel_recv( payload );
   }
 
@@ -301,20 +420,112 @@ static void test_relay( void )
   server.sidechannel_recv( to_server.sent[1] );
   CHECK( !readable( target, 100 ) );
 
-  /* the largest datagram that fits goes through; one byte more is dropped */
+  /* the largest datagram that fits goes through whole */
   const size_t limit = to_server.max_payload - UDPForwarder::HEADER_LEN;
+  size_t crossed = to_server.sent.size();
   send_to_port( app[0], listen_port, std::string( limit, 'x' ) );
   CHECK( readable( listen_fd ) );
   client.read_fd( listen_fd );
   CHECK( readable( target ) );
   CHECK( receive( target ) == std::string( limit, 'x' ) );
-  CHECK( client.get_dropped_oversize() == 0 );
+  CHECK( to_server.sent.size() == crossed + 1 && client.get_fragmented() == 0 );
 
+  /* one byte more goes in two fragments, and arrives as one datagram */
+  crossed = to_server.sent.size();
   send_to_port( app[0], listen_port, std::string( limit + 1, 'y' ) );
   CHECK( readable( listen_fd ) );
   client.read_fd( listen_fd );
+  CHECK( readable( target ) );
+  CHECK( receive( target ) == std::string( limit + 1, 'y' ) );
+  CHECK( !readable( target, 50 ) );
+  CHECK( to_server.sent.size() == crossed + 2 && client.get_fragmented() == 1 );
+  CHECK( server.get_reassembled() == 1 && server.get_recovered() == 0 && server.partial_count() == 0 );
+
+  /* replaying the fragments does not deliver it again */
+  server.sidechannel_recv( to_server.sent[crossed] );
+  server.sidechannel_recv( to_server.sent[crossed + 1] );
+  CHECK( !readable( target, 50 ) && server.partial_count() == 0 );
+
+  /* the largest datagram there is, there and back */
+  const std::string huge = varied( 65507 );
+  send_to_port( app[0], listen_port, huge );
+  CHECK( readable( listen_fd ) );
+  client.read_fd( listen_fd );
+  CHECK( readable( target ) );
+  struct sockaddr_in huge_from;
+  CHECK( receive( target, &huge_from ) == huge );
+  CHECK( sendto( target,
+                 huge.data(),
+                 huge.size(),
+                 0,
+                 reinterpret_cast<struct sockaddr*>( &huge_from ),
+                 sizeof( huge_from ) )
+         == static_cast<ssize_t>( huge.size() ) );
+  {
+    std::vector<int> fds = server.fds();
+    struct pollfd p[2] = { { fds[0], POLLIN, 0 }, { fds[1], POLLIN, 0 } };
+    CHECK( poll( p, 2, 2000 ) == 1 );
+    server.read_fd( p[0].revents ? fds[0] : fds[1] );
+  }
+  CHECK( readable( app[0] ) );
+  CHECK( receive( app[0] ) == huge );
+  CHECK( client.get_reassembled() == 1 && client.get_dropped_oversize() == 0 );
+
+  /* without parity, a lost fragment loses the datagram... */
+  const std::string big = varied( 3000 ); /* three fragments */
+  to_server.lose = 1;
+  send_to_port( app[0], listen_port, big );
+  CHECK( readable( listen_fd ) );
+  client.read_fd( listen_fd );
   CHECK( !readable( target, 100 ) );
-  CHECK( client.get_dropped_oversize() == 1 );
+  CHECK( server.partial_count() == 1 && server.get_abandoned() == 0 );
+
+  /* ...and what did arrive is forgotten after a while */
+  usleep( ( UDPForwarder::REASSEMBLY_TIMEOUT + 100 ) * 1000 );
+  freeze_timestamp();
+  send_to_port( app[0], listen_port, big );
+  CHECK( readable( listen_fd ) );
+  client.read_fd( listen_fd );
+  CHECK( readable( target ) );
+  CHECK( receive( target ) == big );
+  CHECK( server.partial_count() == 0 && server.get_abandoned() == 1 );
+
+  /* with parity there is one more fragment, and losing any one of them does no harm */
+  client.set_fragment_parity( true );
+  for ( int lost = 0; lost < 4; lost++ ) {
+    const uint64_t recovered_before = server.get_recovered();
+    crossed = to_server.sent.size();
+    to_server.lose = lost;
+    send_to_port( app[0], listen_port, big );
+    CHECK( readable( listen_fd ) );
+    client.read_fd( listen_fd );
+    CHECK( to_server.sent.size() == crossed + 4 );
+    CHECK( readable( target ) );
+    CHECK( receive( target ) == big );
+    CHECK( !readable( target, 20 ) );
+    /* parity was needed unless it was the parity that got lost */
+    CHECK( server.get_recovered() == recovered_before + ( lost < 3 ? 1 : 0 ) );
+    CHECK( server.partial_count() == 0 );
+  }
+
+  /* losing two is still too many */
+  to_server.lose = 0;
+  send_to_port( app[0], listen_port, big );
+  CHECK( readable( listen_fd ) );
+  to_server.sent.clear();
+  client.read_fd( listen_fd ); /* the first fragment is lost here... */
+  CHECK( to_server.sent.size() == 4 );
+  CHECK( readable( target ) ); /* ...so parity rebuilt it */
+  CHECK( receive( target ) == big );
+  UDPForwarder lonely( &to_client, UDPForwarder::CONNECT, specs ); /* a receiver that sees only half of them */
+  lonely.sidechannel_recv( to_server.sent[1] );
+  lonely.sidechannel_recv( to_server.sent[3] );
+  CHECK( lonely.partial_count() == 1 && lonely.get_reassembled() == 0 );
+  lonely.sidechannel_recv( to_server.sent[2] ); /* a third makes it whole */
+  CHECK( lonely.partial_count() == 0 && lonely.get_reassembled() == 1 && lonely.get_recovered() == 1 );
+  CHECK( readable( target ) );
+  CHECK( receive( target ) == big );
+  client.set_fragment_parity( false );
 
   /* nothing is sent until the peer is known to support forwarding */
   to_server.ready = false;
@@ -342,6 +553,7 @@ int main()
   test_spec();
   test_wire();
   test_replay();
+  test_fragments();
   test_relay();
   return EXIT_SUCCESS;
 }

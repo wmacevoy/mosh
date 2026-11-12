@@ -250,10 +250,22 @@ The option may be repeated.
 Forwarded datagrams are encrypted and follow the session as the client
 roams, but are otherwise as unreliable as UDP: they are not
 retransmitted or reordered.  Datagrams larger than about 1200 bytes
-are dropped.  Forwarding lasts only as long as the terminal session,
+are sent in fragments and reassembled at the other end; if any
+fragment is lost, the whole datagram is (but see
+\fB\-\-fragment\-parity\fP).  Forwarding lasts only as long as the terminal session,
 and needs a server that supports it; with an older server nothing is
 forwarded.  Only UDP is forwarded, and only from client to server
 (there is no equivalent of \fBssh \-R\fP).
+
+.TP
+.B \-\-fragment\-parity
+Experimental.  When a datagram forwarded with \fB\-L\fP has to be
+fragmented, send one extra parity fragment for every eight fragments
+or fewer, so that the datagram survives the loss of any one fragment
+in each such group.  This makes large datagrams considerably more
+likely to arrive on a lossy network, at the cost of the extra traffic
+(half as much again for a datagram of two fragments, less for larger
+ones).  Datagrams small enough to be sent whole are not affected.
 
 .TP
 .B \-\-tcp\-forward=\fR[\fP\fIBIND_ADDRESS\fP:\fR]\fP\fIPORT\fP:\fIHOST\fP:\fIHOSTPORT\fP

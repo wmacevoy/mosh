@@ -65,6 +65,7 @@ public:
     if ( !udp_specs.empty() ) {
       udp.reset( new UDPForwarder( link, client ? UDPForwarder::LISTEN : UDPForwarder::CONNECT, udp_specs ) );
       mux.set_sink( UDPForwarder::TYPE_UDP_DATA, udp.get() );
+      mux.set_sink( UDPForwarder::TYPE_UDP_FRAGMENT, udp.get() );
     }
     if ( !tcp_specs.empty() ) {
       tcp.reset( new TCPForwarder( link,
@@ -77,6 +78,14 @@ public:
 
   /* Give this to Transport::set_sidechannel_sink(). */
   SideChannelSink* sink( void ) { return &mux; }
+
+  /* Add parity to the UDP datagrams this end has to fragment. */
+  void set_fragment_parity( bool parity )
+  {
+    if ( udp ) {
+      udp->set_fragment_parity( parity );
+    }
+  }
 
   void set_verbose( unsigned int verbose )
   {

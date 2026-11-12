@@ -70,7 +70,7 @@ private:
   Terminal::Display display;
 
   std::vector<std::string> udp_forwards, tcp_forwards;
-  bool tcp_tun;
+  bool tcp_tun, fragment_parity;
   std::unique_ptr<Network::Forwarding> forwarder;
   std::wstring forward_notice;
   uint64_t forward_notice_until;
@@ -104,12 +104,14 @@ public:
              const char* predict_overwrite,
              const std::vector<std::string>& s_udp_forwards = std::vector<std::string>(),
              const std::vector<std::string>& s_tcp_forwards = std::vector<std::string>(),
-             bool s_tcp_tun = false )
+             bool s_tcp_tun = false,
+             bool s_fragment_parity = false )
     : ip( s_ip ? s_ip : "" ), port( s_port ? s_port : "" ), key( s_key ? s_key : "" ), escape_key( 0x1E ),
       escape_pass_key( '^' ), escape_pass_key2( '^' ), escape_requires_lf( false ), escape_key_help( L"?" ),
       saved_termios(), raw_termios(), window_size(), local_framebuffer( 1, 1 ), new_state( 1, 1 ), overlays(),
       network(), display( true ) /* use TERM environment var to initialize display */,
-      udp_forwards( s_udp_forwards ), tcp_forwards( s_tcp_forwards ), tcp_tun( s_tcp_tun ), forwarder(),
+      udp_forwards( s_udp_forwards ), tcp_forwards( s_tcp_forwards ), tcp_tun( s_tcp_tun ),
+      fragment_parity( s_fragment_parity ), forwarder(),
       forward_notice(), forward_notice_until( 0 ), connecting_notification(),
       repaint_requested( false ), lf_entered( false ), quit_sequence_started( false ), clean_shutdown( false ),
       verbose( s_verbose )

@@ -76,6 +76,8 @@ my @tcp_forwards = ();
 
 my $tcp_tun = 0;
 
+my $fragment_parity = 0;
+
 my $use_remote_ip = 'proxy';
 
 my $family = 'prefer-inet';
@@ -125,6 +127,10 @@ qq{Usage: $0 [options] [--] [user@]host [command...]
                              forward UDP datagrams sent to local PORT
                                 to HOST:HOSTPORT as seen from the server
                                 (may be repeated; needs support on the server)
+
+        --fragment-parity    add parity to forwarded UDP datagrams that are
+                                too large to send whole, so that they
+                                survive the loss of one fragment
 
         --tcp-forward=[BIND_ADDRESS:]PORT:HOST:HOSTPORT
                              forward TCP connections made to local PORT
@@ -194,6 +200,7 @@ GetOptions( 'client=s' => \$client,
 	    'udp-forward|L=s' => \@udp_forwards,
 	    'tcp-forward=s' => \@tcp_forwards,
 	    'tcp-tun!' => \$tcp_tun,
+	    'fragment-parity!' => \$fragment_parity,
 	    'experimental-remote-ip=s' => \$use_remote_ip) or die $usage;
 
 if ( defined $help ) {
@@ -423,6 +430,10 @@ if ( $pid == 0 ) { # child
     push @server, '-t';
   }
 
+  if ( $fragment_parity ) {
+    push @server, '-F';
+  }
+
   if ( scalar @command > 0 ) {
     push @server, '--', @command;
   }
@@ -498,7 +509,8 @@ if ( $pid == 0 ) { # child
   $ENV{ 'MOSH_PREDICTION_DISPLAY' } = $predict;
   $ENV{ 'MOSH_NO_TERM_INIT' } = '1' if !$term_init;
   exec {$client} ("$client", "-# @cmdline |", ( map { ( '-L', $_ ) } @udp_forwards ),
-		    ( map { ( '-T', $_ ) } @tcp_forwards ), ( $tcp_tun ? ( '-t' ) : () ), $ip, $port);
+		    ( map { ( '-T', $_ ) } @tcp_forwards ), ( $tcp_tun ? ( '-t' ) : () ),
+		    ( $fragment_parity ? ( '-F' ) : () ), $ip, $port);
 }
 
 sub shell_quote { join ' ', map {(my $a = $_) =~ s/'/'\\''/g; "'$a'"} @_ }
