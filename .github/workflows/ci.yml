@@ -67,6 +67,7 @@ jobs:
           make
           pkgconf
           perl
+          perl-doc
           python
           zip
           protobuf-devel
