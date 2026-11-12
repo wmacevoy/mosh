@@ -6,6 +6,42 @@ title: Using it
 
 # Using port forwarding
 
+## Installing
+
+Port forwarding needs this build on **both** your machine and the server.
+
+**Linux** (x86-64 or ARM64, glibc 2.31 or newer: Debian 11, Ubuntu 20.04,
+RHEL 9 and later). Run this on each machine. It installs into `~/.local/bin`
+and needs no root:
+
+```
+curl -fsSL https://raw.githubusercontent.com/wmacevoy/mosh/master/scripts/install.sh | sh
+```
+
+It downloads the newest [release](https://github.com/wmacevoy/mosh/releases),
+checks it against the published checksums, and installs `mosh`,
+`mosh-client` and `mosh-server`. The programs need nothing but the C library.
+
+- On your own machine, put `~/.local/bin` on your `PATH` if it isn't (the
+  installer says so). `mosh` itself needs `perl` and `ssh`.
+- On a server, nothing more: this `mosh` looks for `mosh-server` in
+  `~/.local/bin` on the server before anywhere else, so it finds the one you
+  installed even if the system has an older mosh.
+- Set `PREFIX` to install somewhere else, or `MOSH_VERSION` for a particular
+  release.
+
+**Windows.** Download the `msys2` zip from the release page and unpack it. It
+holds `mosh-client.exe` and the MSYS2 libraries it needs. The `mosh` wrapper
+beside it is a Perl script that runs `ssh`, so it needs both of those, for
+instance from an MSYS2 installation.
+
+**macOS and everything else.** Build from source, below.
+
+Releases are marked as pre-releases: this is experimental and has not been
+audited. Each download is listed in the release's `SHA256SUMS`, and was built
+by the repository's release workflow from the tagged commit, which
+`gh attestation verify FILE --repo wmacevoy/mosh` will confirm.
+
 ## Building
 
 Build as you would build mosh, on both the client machine and the server:

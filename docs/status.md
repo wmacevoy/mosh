@@ -39,6 +39,41 @@ failures and 2 skips, as before, plus the new unit tests).
 | UDP, 5000-byte datagrams, 1% loss | 89.6% without parity, 99.0% in `auto` |
 | New client with an old server, and old client with a new server | Terminal works normally; nothing is forwarded |
 
+## Checked on every change
+
+GitHub Actions runs these on each push:
+
+| Job | What it does |
+|---|---|
+| `build` | Builds with warnings as errors and runs the test suite on Ubuntu 22.04, Ubuntu 24.04 and macOS, and on Ubuntu with a second cryptography library |
+| `msys2` | Builds on Windows in MSYS2, runs the unit tests there, and checks that the packaged client starts outside MSYS2 |
+| `sanitizers` | Runs the whole suite under AddressSanitizer and UndefinedBehaviorSanitizer, with leak checking for the forwarding tests |
+| `fuzz` | Runs each fuzzer for a minute with libFuzzer, starting from a saved set of inputs |
+| CodeQL | Static analysis of the C++, also run weekly |
+
+## Fuzzing
+
+Four fuzzers cover the code that handles input from the other end of a
+session, which is where a malicious or compromised peer would attack:
+
+| Fuzzer | Covers |
+|---|---|
+| `forward_frame_fuzzer` | The frame header, fragment reassembly, parity and the replay window, checking that whatever is split can be rebuilt and nothing is accepted twice |
+| `tcpinudp_fuzzer` | The TCP-in-UDP codec, checking that whatever parses can be written and read back unchanged |
+| `udp_forward_fuzzer` | The UDP forwarder, with real loopback sockets |
+| `tcp_adapter_fuzzer` | The built-in TCP in both roles, with real loopback sockets |
+
+They found two bugs when first run, both fixed:
+
+- A peer that advertised a TCP maximum segment size of zero made the built-in
+  TCP send empty segments for ever, freezing the program.
+- A UDP datagram needing 227 to 255 fragments was sent but could never be
+  reassembled.
+
+The one-minute runs in CI are a check against regressions. They are not a
+fuzzing campaign, and none of this is a security audit: the code has had no
+independent review.
+
 ## What has not been tested
 
 - A real network. Every test ran over loopback, with loss injected by a
@@ -76,8 +111,10 @@ a terminal, and no way to add or remove one while the session runs.
 **Security.** A local forward lets anything that can reach the listening
 address use it, so the default is loopback only. The server will connect or
 send to whatever target the authenticated client was started with; as with
-ssh, that is the user's own authority on the server. The added code has had
-no security review.
+ssh, that is the user's own authority on the server. Mosh authenticates every
+datagram before the forwarding code sees it, so the code can only be reached
+by the other end of the session. It is fuzzed and run under sanitizers (see
+above) but has had no independent security review.
 
 ## Not implemented
 

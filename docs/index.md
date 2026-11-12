@@ -57,7 +57,8 @@ It also makes UDP forwarding possible at all, which ssh does not offer.
 - This build of mosh on **both** ends. If the server is an older mosh,
   the terminal works as usual and forwards simply do nothing (connections are
   refused).
-- Nothing else: no extra privileges, ports or configuration.
+- Nothing else: no extra privileges, ports or configuration. On Linux there
+  is a [one-line installer](usage.md#installing) that needs no root.
 
 ## Where to go next
 

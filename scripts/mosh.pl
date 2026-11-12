@@ -62,7 +62,12 @@ my $have_ipv6 = eval {
 $|=1;
 
 my $client = 'mosh-client';
-my $server = 'mosh-server';
+# Unless told otherwise with --server, look for mosh-server in
+# ~/.local/bin as well, ahead of the usual places: that is where the
+# installer puts it, and it is often not on the path of a
+# non-interactive ssh session.  (Written to survive a login shell that
+# is not a Bourne shell.)
+my $server = q{sh -c 'PATH="$HOME/.local/bin:$PATH"; export PATH; exec mosh-server "$@"' mosh-server};
 
 my $predict = undef;
 
@@ -171,8 +176,9 @@ qq{Usage: $0 [options] [--] [user@]host [command...]
         --help               this message
         --version            version and copyright information
 
-Please report bugs to mosh-devel\@mit.edu.
-Mosh home page: https://mosh.org\n};
+This is mosh with experimental port forwarding (https://wmacevoy.github.io/mosh/).
+Please report bugs in it at https://github.com/wmacevoy/mosh/issues,
+not to the mosh project.  Mosh home page: https://mosh.org\n};
 
 my $version_message = '@PACKAGE_STRING@ [build @VERSION@]' . qq{
 Copyright 2012 Keith Winstein <mosh-devel\@mit.edu>
