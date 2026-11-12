@@ -7,6 +7,8 @@ jobs:
     runs-on: ${{ matrix.os }}
 
     strategy:
+      # let every platform report, rather than stopping at the first to fail
+      fail-fast: false
       matrix:
         os: [macos-latest, ubuntu-22.04, ubuntu-24.04]
         crypto: [auto]

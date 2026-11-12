@@ -34,6 +34,7 @@
    forwarders joined by an in-memory side channel that can lose
    datagrams. */
 
+#include <csignal>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
