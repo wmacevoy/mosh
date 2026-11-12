@@ -180,7 +180,7 @@ jobs:
     - name: "test"
       run: |
         export MSYSTEM=CYGWIN
-        make -C src/tests V=1 check TESTS="ocb-aes encrypt-decrypt base64 nonce-incr udp-forward tcp-in-udp tcp-forward file-copy"
+        make -C src/tests V=1 check TESTS="ocb-aes encrypt-decrypt base64 nonce-incr udp-forward tcp-in-udp tcp-forward file-copy" || { cat src/tests/test-suite.log; exit 1; }
 
     - name: "collect the client and the libraries it needs"
       run: |

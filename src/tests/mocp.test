@@ -53,7 +53,7 @@ $mocp -q -r src "127.0.0.1:$work/there/"
 check "a directory is copied to the server" "$(yes_if diff -r src there/src)"
 
 said=$($mocp -r src "127.0.0.1:$work/there/" 2>&1)
-check "and not copied again when nothing has changed" "$(case "$said" in *"up to date"*) echo ok ;; esac)"
+check "and not copied again when nothing has changed" "$(printf '%s\n' "$said" | grep -q "up to date" && echo ok)"
 
 $mocp -q "127.0.0.1:$work/src/*.txt" "127.0.0.1:$work/src/big.bin" back
 check "files are copied from the server, by pattern" \
