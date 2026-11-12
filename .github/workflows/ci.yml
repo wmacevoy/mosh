@@ -39,3 +39,68 @@ jobs:
 
     - name: "test"
       run: make V=1 check
+
+  # The Windows client, built in MSYS2's POSIX environment (as MSYS2's own
+  # mosh package is).  The result needs the MSYS2 runtime DLLs, which are
+  # collected alongside it.
+  msys2:
+    runs-on: windows-latest
+
+    defaults:
+      run:
+        shell: msys2 {0}
+
+    steps:
+    - name: "keep line endings as they are"
+      shell: bash
+      run: git config --global core.autocrlf false
+
+    - uses: actions/checkout@v4
+
+    - uses: msys2/setup-msys2@v2
+      with:
+        msystem: MSYS
+        update: true
+        install: >-
+          autotools
+          gcc
+          make
+          pkgconf
+          perl
+          python
+          zip
+          protobuf-devel
+          ncurses-devel
+          zlib-devel
+          openssl-devel
+
+    - name: "generate build scripts"
+      run: ./autogen.sh
+
+    - name: "configure"
+      run: |
+        export MSYSTEM=CYGWIN
+        CXXFLAGS="-g -O2 -D_GNU_SOURCE" ./configure
+
+    - name: "build"
+      run: |
+        export MSYSTEM=CYGWIN
+        make V=1
+
+    - name: "test"
+      run: |
+        export MSYSTEM=CYGWIN
+        make -C src/tests V=1 check TESTS="ocb-aes encrypt-decrypt base64 nonce-incr udp-forward tcp-in-udp tcp-forward"
+
+    - name: "collect the client and the libraries it needs"
+      run: |
+        mkdir -p dist/mosh-msys2
+        cp src/frontend/mosh-client.exe scripts/mosh dist/mosh-msys2/
+        ldd src/frontend/mosh-client.exe | awk '$3 ~ /^\/usr\/bin\// { print $3 }' | sort -u | xargs -I{} cp {} dist/mosh-msys2/
+        ls -l dist/mosh-msys2
+        ./dist/mosh-msys2/mosh-client.exe --version
+
+    - uses: actions/upload-artifact@v4
+      with:
+        name: mosh-client-msys2
+        path: dist/mosh-msys2
