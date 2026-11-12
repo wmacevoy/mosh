@@ -37,7 +37,7 @@ fetch() { # URL [FILE]
 # What are we running on?
 case "$(uname -s)" in
     Linux) os=linux ;;
-    Darwin) fail "there is no prebuilt macOS package yet; build from source: https://wmacevoy.github.io/mosh/usage.html" ;;
+    Darwin) os=macos ;;
     MSYS*|MINGW*|CYGWIN*) fail "on Windows, download the mosh-*-msys2.zip from https://github.com/$repo/releases" ;;
     *) fail "no prebuilt package for $(uname -s); build from source: https://wmacevoy.github.io/mosh/usage.html" ;;
 esac
@@ -46,6 +46,7 @@ case "$(uname -m)" in
     aarch64|arm64) arch=aarch64 ;;
     *) fail "no prebuilt package for $(uname -m); build from source: https://wmacevoy.github.io/mosh/usage.html" ;;
 esac
+[ "$os" = macos ] && arch=universal
 
 # Which release?  (A copy of this script published with a release knows its own.)
 case "$version" in
@@ -81,7 +82,7 @@ fi
 
 tar -xzf "$tmp/$name.tar.gz" -C "$tmp"
 "$tmp/$name/bin/mosh-client" --version >/dev/null 2>&1 \
-    || fail "the downloaded mosh-client does not run on this system (it needs glibc 2.31 or newer)"
+    || fail "the downloaded mosh-client does not run on this system; build from source: https://wmacevoy.github.io/mosh/usage.html"
 
 mkdir -p "$prefix/bin" "$prefix/share/man/man1"
 for f in mosh mosh-client mosh-server; do

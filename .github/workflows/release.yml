@@ -5,9 +5,11 @@ name: Release
 #
 #   mosh-VERSION.tar.gz                  source
 #   mosh-VERSION-linux-x86_64.tar.gz     programs needing only the C library
-#   mosh-VERSION-linux-aarch64.tar.gz      (glibc 2.31 or newer)
+#   mosh-VERSION-linux-aarch64.tar.gz      (as old as Ubuntu 22.04's)
+#   mosh-VERSION-macos-universal.tar.gz  for Apple Silicon and Intel, needing
+#                                          only what ships with macOS 11+
 #   mosh-VERSION-msys2.zip               Windows client with the MSYS2 runtime
-#   install.sh                           installer for the Linux packages
+#   install.sh                           installer for the Linux and macOS packages
 #   SHA256SUMS
 #
 # To release: set the version in configure.ac's AC_INIT, commit, and
@@ -65,30 +67,28 @@ jobs:
         name: source
         path: dist/
 
-  # Built on an old Debian so that the result runs on anything newer,
-  # with every library but the C library linked in.
+  # Built on the oldest Ubuntu there is a runner for, so that the result
+  # runs on anything newer, with every library but the C library linked in.
   linux:
     strategy:
       fail-fast: false
       matrix:
         include:
           - arch: x86_64
-            runner: ubuntu-24.04
+            runner: ubuntu-22.04
           - arch: aarch64
-            runner: ubuntu-24.04-arm
+            runner: ubuntu-22.04-arm
 
     runs-on: ${{ matrix.runner }}
-    container: debian:11
 
     steps:
+    - uses: actions/checkout@v4
+
     - name: "setup build environment"
       run: |
-        apt-get update
-        apt-get install -y --no-install-recommends g++ make autoconf automake pkg-config perl perl-doc \
-          protobuf-compiler libprotobuf-dev libncurses-dev libssl-dev zlib1g-dev \
-          python3 ca-certificates file binutils
-
-    - uses: actions/checkout@v4
+        sudo apt-get update
+        sudo apt-get install -y g++ make autoconf automake pkg-config perl perl-doc \
+          protobuf-compiler libprotobuf-dev libncurses-dev libssl-dev zlib1g-dev python3 file binutils
 
     - name: "build"
       run: |
@@ -98,11 +98,9 @@ jobs:
 
     - name: "test"
       run: make check
-      env:
-        LC_ALL: C.UTF-8
 
     - name: "package"
-      run: scripts/package-linux.sh dist
+      run: scripts/package-release.sh dist
 
     - name: "check what the programs need from the system"
       run: |
@@ -116,6 +114,78 @@ jobs:
     - uses: actions/upload-artifact@v4
       with:
         name: linux-${{ matrix.arch }}
+        path: dist/
+
+  # One build for Apple Silicon and Intel.  Protocol Buffers is built
+  # here and linked in; everything else mosh needs ships with macOS
+  # (its cryptography, curses and zlib), so the result needs no Homebrew.
+  macos:
+    runs-on: macos-latest
+
+    env:
+      MACOSX_DEPLOYMENT_TARGET: "11.0"
+      PROTOBUF_VERSION: "21.12"
+      ARCHS: -arch arm64 -arch x86_64
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: "setup build environment"
+      run: brew install automake autoconf pkg-config || true
+
+    - name: "cache Protocol Buffers"
+      id: protobuf
+      uses: actions/cache@v4
+      with:
+        path: protobuf
+        key: protobuf-${{ env.PROTOBUF_VERSION }}-macos-universal-${{ env.MACOSX_DEPLOYMENT_TARGET }}-1
+
+    # The last release that depends on nothing else.
+    - name: "build Protocol Buffers, statically, for both architectures"
+      if: steps.protobuf.outputs.cache-hit != 'true'
+      run: |
+        curl -fsSL -o protobuf.tar.gz \
+          "https://github.com/protocolbuffers/protobuf/releases/download/v$PROTOBUF_VERSION/protobuf-cpp-3.$PROTOBUF_VERSION.tar.gz"
+        mkdir protobuf-src && tar -xzf protobuf.tar.gz -C protobuf-src --strip-components 1
+        cmake -S protobuf-src -B protobuf-build \
+          -DCMAKE_BUILD_TYPE=Release \
+          -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" \
+          -DCMAKE_OSX_DEPLOYMENT_TARGET="$MACOSX_DEPLOYMENT_TARGET" \
+          -DCMAKE_CXX_STANDARD=17 \
+          -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
+          -DCMAKE_INSTALL_PREFIX="$PWD/protobuf" \
+          -Dprotobuf_BUILD_SHARED_LIBS=OFF \
+          -Dprotobuf_BUILD_TESTS=OFF
+        cmake --build protobuf-build -j 4
+        cmake --install protobuf-build
+
+    - name: "build"
+      run: |
+        export PATH="$PWD/protobuf/bin:$PATH" PKG_CONFIG_PATH="$PWD/protobuf/lib/pkgconfig"
+        protoc --version
+        ./autogen.sh
+        ./configure --disable-dependency-tracking CXXFLAGS="-g -O2 $ARCHS" CFLAGS="-g -O2 $ARCHS" LDFLAGS="$ARCHS"
+        make
+
+    - name: "test"
+      run: make check
+
+    - name: "package"
+      run: scripts/package-release.sh dist
+
+    - name: "check what the programs need from the system"
+      run: |
+        for program in src/frontend/mosh-client src/frontend/mosh-server; do
+          file "$program"
+          otool -L "$program"
+          otool -l "$program" | grep -A 3 -E 'LC_BUILD_VERSION|LC_VERSION_MIN' | grep -E 'minos|version' || true
+        done
+        # the Intel half, if this machine can run it
+        arch -x86_64 src/frontend/mosh-client --version || echo "(no Rosetta here; the Intel build was not run)"
+
+    - uses: actions/upload-artifact@v4
+      with:
+        name: macos-universal
         path: dist/
 
   msys2:
@@ -185,7 +255,7 @@ jobs:
 
   publish:
     if: github.ref_type == 'tag'
-    needs: [source, linux, msys2]
+    needs: [source, linux, macos, msys2]
     runs-on: ubuntu-24.04
 
     permissions:
