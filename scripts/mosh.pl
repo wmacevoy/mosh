@@ -70,6 +70,8 @@ my $overwrite = 0;
 
 my $bind_ip = undef;
 
+my @udp_forwards = ();
+
 my $use_remote_ip = 'proxy';
 
 my $family = 'prefer-inet';
@@ -113,6 +115,12 @@ qq{Usage: $0 [options] [--] [user@]host [command...]
                                 (No effect on server-side SSH port)
         --bind-server={ssh|any|IP}  ask the server to reply from an IP address
                                        (default: "ssh")
+
+-L [BIND_ADDRESS:]PORT:HOST:HOSTPORT
+        --udp-forward=[BIND_ADDRESS:]PORT:HOST:HOSTPORT
+                             forward UDP datagrams sent to local PORT
+                                to HOST:HOSTPORT as seen from the server
+                                (may be repeated; needs support on the server)
 
         --ssh=COMMAND        ssh command to run when setting up session
                                 (example: "ssh -p 2222")
@@ -171,6 +179,7 @@ GetOptions( 'client=s' => \$client,
 	    'version' => \$version,
 	    'fake-proxy!' => \my $fake_proxy,
 	    'bind-server=s' => \$bind_ip,
+	    'udp-forward|L=s' => \@udp_forwards,
 	    'experimental-remote-ip=s' => \$use_remote_ip) or die $usage;
 
 if ( defined $help ) {
@@ -388,6 +397,10 @@ if ( $pid == 0 ) { # child
     push @server, ( '-l', $_ );
   }
 
+  for ( @udp_forwards ) {
+    push @server, ( '-L', $_ );
+  }
+
   if ( scalar @command > 0 ) {
     push @server, '--', @command;
   }
@@ -462,7 +475,7 @@ if ( $pid == 0 ) { # child
   $ENV{ 'MOSH_KEY' } = $key;
   $ENV{ 'MOSH_PREDICTION_DISPLAY' } = $predict;
   $ENV{ 'MOSH_NO_TERM_INIT' } = '1' if !$term_init;
-  exec {$client} ("$client", "-# @cmdline |", $ip, $port);
+  exec {$client} ("$client", "-# @cmdline |", ( map { ( '-L', $_ ) } @udp_forwards ), $ip, $port);
 }
 
 sub shell_quote { join ' ', map {(my $a = $_) =~ s/'/'\\''/g; "'$a'"} @_ }

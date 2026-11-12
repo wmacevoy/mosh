@@ -15,4 +15,8 @@ message Instruction {
   optional bytes diff = 6;
 
   optional bytes chaff = 7;
+
+  /* Optional features this end supports (see src/network/sidechannel.h).
+     Unknown to, and ignored by, older peers. */
+  optional uint32 capabilities = 8;
 }

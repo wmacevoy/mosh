@@ -25,6 +25,7 @@ new
 [\-i \fIIP\fP]
 [\-p \fIPORT\fP[:\fIPORT2\fP]]
 [\-c \fICOLORS\fP]
+[\-L \fR[\fP\fIBIND\fP:\fR]\fP\fIPORT\fP:\fIHOST\fP:\fIHOSTPORT\fP]
 [\-\- command...]
 .br
 .SH DESCRIPTION
@@ -82,7 +83,13 @@ Number of colors to advertise to applications through TERM (e.g. 8, 256)
 .B \-l \fINAME=VALUE\fP
 Locale-related environment variable to try as part of a fallback
 environment, if the startup environment does not specify a character
-set of UTF-8.
+.TP
+.B \-L \fR[\fP\fIBIND_ADDRESS\fP:\fR]\fP\fIPORT\fP:\fIHOST\fP:\fIHOSTPORT\fP
+Experimental.  Relay UDP datagrams that the client forwards (see
+.BR mosh (1))
+to \fIHOST\fP:\fIHOSTPORT\fP.  The client must be given the same
+specifications in the same order; the server ignores the
+\fIBIND\fP and \fIPORT\fP parts.
 
 .SH ENVIRONMENT VARIABLES
 These variables allow server-side configuration of Mosh's behavior.

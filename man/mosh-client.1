@@ -21,6 +21,7 @@ mosh-client \- client-side helper for mosh
 MOSH_KEY=KEY
 .B mosh-client 
 [\-v]
+[\-L \fR[\fP\fIBIND\fP:\fR]\fP\fIPORT\fP:\fIHOST\fP:\fIHOSTPORT\fP]
 IP PORT
 .br
 .B mosh-client 
@@ -46,6 +47,11 @@ key that protects the integrity and confidentiality of the session.
 For constructing new setup wrappers for remote execution facilities
 other than SSH, it may be necessary to invoke \fBmosh-client\fP
 directly.
+
+The \-L option forwards UDP datagrams from a local port through the
+session, as described in
+.BR mosh (1).
+\fBmosh-server\fP must be given the same specifications in the same order.
 
 With the \-c option, \fBmosh-client\fP instead prints the number of colors
 of the terminal given by the TERM environment variable.

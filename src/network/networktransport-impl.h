@@ -46,7 +46,8 @@ Transport<MyState, RemoteState>::Transport( MyState& initial_state,
                                             const char* desired_port )
   : connection( desired_ip, desired_port ), sender( &connection, initial_state ),
     received_states( 1, TimestampedState<RemoteState>( timestamp(), 0, initial_remote ) ),
-    receiver_quench_timer( 0 ), last_receiver_state( initial_remote ), fragments(), verbose( 0 )
+    receiver_quench_timer( 0 ), last_receiver_state( initial_remote ), fragments(), verbose( 0 ),
+    sidechannel_sink( NULL ), peer_capabilities( 0 )
 {
   /* server */
 }
@@ -59,7 +60,8 @@ Transport<MyState, RemoteState>::Transport( MyState& initial_state,
                                             const char* port )
   : connection( key_str, ip, port ), sender( &connection, initial_state ),
     received_states( 1, TimestampedState<RemoteState>( timestamp(), 0, initial_remote ) ),
-    receiver_quench_timer( 0 ), last_receiver_state( initial_remote ), fragments(), verbose( 0 )
+    receiver_quench_timer( 0 ), last_receiver_state( initial_remote ), fragments(), verbose( 0 ),
+    sidechannel_sink( NULL ), peer_capabilities( 0 )
 {
   /* client */
 }
@@ -68,6 +70,15 @@ template<class MyState, class RemoteState>
 void Transport<MyState, RemoteState>::recv( void )
 {
   std::string s( connection.recv() );
+
+  if ( !s.empty() && static_cast<uint8_t>( s[0] ) == SIDECHANNEL_MAGIC ) {
+    /* not a transport fragment; bypasses state synchronization entirely */
+    if ( sidechannel_sink ) {
+      sidechannel_sink->sidechannel_recv( s );
+    }
+    return;
+  }
+
   Fragment frag( s );
 
   if ( fragments.add_fragment( frag ) ) { /* complete packet */
@@ -76,6 +87,8 @@ void Transport<MyState, RemoteState>::recv( void )
     if ( inst.protocol_version() != MOSH_PROTOCOL_VERSION ) {
       throw NetworkException( "mosh protocol version mismatch", 0 );
     }
+
+    peer_capabilities = inst.capabilities();
 
     sender.process_acknowledgment_through( inst.ack_num() );
 
@@ -172,6 +185,18 @@ void Transport<MyState, RemoteState>::recv( void )
       sender.set_data_ack();
     }
   }
+}
+
+template<class MyState, class RemoteState>
+void Transport<MyState, RemoteState>::sidechannel_send( const std::string& payload )
+{
+  assert( !payload.empty() && static_cast<uint8_t>( payload[0] ) == SIDECHANNEL_MAGIC );
+
+  if ( !sidechannel_ready() || payload.size() > sidechannel_max_payload() ) {
+    return;
+  }
+
+  connection.send( payload );
 }
 
 /* The sender uses throwaway_num to tell us the earliest received state that we need to keep around */

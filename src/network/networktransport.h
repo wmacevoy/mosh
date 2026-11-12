@@ -40,12 +40,13 @@
 #include <vector>
 
 #include "src/network/network.h"
+#include "src/network/sidechannel.h"
 #include "src/network/transportsender.h"
 #include "transportfragment.h"
 
 namespace Network {
 template<class MyState, class RemoteState>
-class Transport
+class Transport : public SideChannelLink
 {
 private:
   /* the underlying, encrypted network connection */
@@ -63,6 +64,14 @@ private:
   RemoteState last_receiver_state; /* the state we were in when user last queried state */
   FragmentAssembly fragments;
   unsigned int verbose;
+
+  /* side channel (see sidechannel.h) */
+  SideChannelSink* sidechannel_sink;
+  uint32_t peer_capabilities;
+
+  /* unused */
+  Transport( const Transport& );
+  Transport& operator=( const Transport& );
 
 public:
   Transport( MyState& initial_state,
@@ -128,6 +137,26 @@ public:
   socklen_t get_remote_addr_len( void ) const { return connection.get_remote_addr_len(); }
 
   std::string& get_send_error( void ) { return connection.get_send_error(); }
+
+  /* Enable the side channel: advertise it to the peer and deliver what arrives to the sink. */
+  void set_sidechannel_sink( SideChannelSink* s_sink )
+  {
+    sidechannel_sink = s_sink;
+    sender.set_capabilities( s_sink ? CAPABILITY_SIDECHANNEL : 0 );
+  }
+
+  bool sidechannel_ready( void ) const
+  {
+    return sidechannel_sink && ( peer_capabilities & CAPABILITY_SIDECHANNEL ) && connection.get_has_remote_addr()
+           && !sender.get_shutdown_in_progress();
+  }
+
+  size_t sidechannel_max_payload( void ) const
+  {
+    return connection.get_MTU() - Network::Connection::ADDED_BYTES - Crypto::Session::ADDED_BYTES;
+  }
+
+  void sidechannel_send( const std::string& payload );
 };
 }
 

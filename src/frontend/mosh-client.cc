@@ -85,7 +85,7 @@ static void print_usage( FILE* file, const char* argv0 )
 {
   print_version( file );
   fprintf( file,
-           "\nUsage: %s [-# 'ARGS'] IP PORT\n"
+           "\nUsage: %s [-# 'ARGS'] [-L [BIND:]PORT:HOST:HOSTPORT] IP PORT\n"
            "       %s -c\n",
            argv0,
            argv0 );
@@ -108,6 +108,7 @@ static void print_colorcount( void )
 int main( int argc, char* argv[] )
 {
   unsigned int verbose = 0;
+  std::vector<std::string> udp_forwards;
   /* For security, make sure we don't dump core */
   Crypto::disable_dumping_core();
 
@@ -127,7 +128,7 @@ int main( int argc, char* argv[] )
   }
 
   int opt;
-  while ( ( opt = getopt( argc, argv, "#:cv" ) ) != -1 ) {
+  while ( ( opt = getopt( argc, argv, "#:cvL:" ) ) != -1 ) {
     switch ( opt ) {
       case '#':
         // Ignore the original arguments to mosh wrapper
@@ -138,6 +139,10 @@ int main( int argc, char* argv[] )
         break;
       case 'v':
         verbose++;
+        break;
+      case 'L':
+        /* forward UDP datagrams sent to a local port */
+        udp_forwards.push_back( std::string( optarg ) );
         break;
       default:
         print_usage( stderr, argv[0] );
@@ -190,7 +195,7 @@ int main( int argc, char* argv[] )
 
   bool success = false;
   try {
-    STMClient client( ip, desired_port, key.c_str(), predict_mode, verbose, predict_overwrite );
+    STMClient client( ip, desired_port, key.c_str(), predict_mode, verbose, predict_overwrite, udp_forwards );
     client.init();
 
     try {

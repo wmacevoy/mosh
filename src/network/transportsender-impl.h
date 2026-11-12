@@ -52,7 +52,7 @@ TransportSender<MyState>::TransportSender( Connection* s_connection, MyState& in
     sent_states( 1, TimestampedState<MyState>( timestamp(), 0, initial_state ) ),
     assumed_receiver_state( sent_states.begin() ), fragmenter(), next_ack_time( timestamp() ),
     next_send_time( timestamp() ), verbose( 0 ), shutdown_in_progress( false ), shutdown_tries( 0 ),
-    shutdown_start( -1 ), ack_num( 0 ), pending_data_ack( false ), SEND_MINDELAY( 8 ), last_heard( 0 ), prng(),
+    shutdown_start( -1 ), ack_num( 0 ), capabilities( 0 ), pending_data_ack( false ), SEND_MINDELAY( 8 ), last_heard( 0 ), prng(),
     mindelay_clock( -1 )
 {}
 
@@ -314,6 +314,9 @@ void TransportSender<MyState>::send_in_fragments( const std::string& diff, uint6
   inst.set_throwaway_num( sent_states.front().num );
   inst.set_diff( diff );
   inst.set_chaff( make_chaff() );
+  if ( capabilities ) {
+    inst.set_capabilities( capabilities );
+  }
 
   if ( new_num == uint64_t( -1 ) ) {
     shutdown_tries++;

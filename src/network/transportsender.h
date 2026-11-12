@@ -95,6 +95,7 @@ private:
 
   /* information about receiver state */
   uint64_t ack_num;
+  uint32_t capabilities; /* advertised to the peer when nonzero */
   bool pending_data_ack;
 
   unsigned int SEND_MINDELAY; /* ms to collect all input */
@@ -122,6 +123,7 @@ public:
 
   /* Executed upon entry to new receiver state */
   void set_ack_num( uint64_t s_ack_num );
+  void set_capabilities( uint32_t s_capabilities ) { capabilities = s_capabilities; }
 
   /* Accelerate reply ack */
   void set_data_ack( void ) { pending_data_ack = true; }

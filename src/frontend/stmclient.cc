@@ -270,6 +270,12 @@ void STMClient::main_init( void )
   /* be noisy as necessary */
   network->set_verbose( verbose );
   Select::set_verbose( verbose );
+
+  /* UDP forwarding: start listening on the local ports */
+  if ( !udp_forwards.empty() ) {
+    forwarder.reset( new Network::UDPForwarder( network.get(), Network::UDPForwarder::LISTEN, udp_forwards ) );
+    network->set_sidechannel_sink( forwarder.get() );
+  }
 }
 
 void STMClient::output_new_frame( void )
@@ -466,6 +472,13 @@ bool STMClient::main( void )
         sel.add_fd( *it );
       }
       sel.add_fd( STDIN_FILENO );
+      std::vector<int> forward_fds;
+      if ( forwarder ) {
+        forward_fds = forwarder->fds();
+        for ( std::vector<int>::const_iterator it = forward_fds.begin(); it != forward_fds.end(); it++ ) {
+          sel.add_fd( *it );
+        }
+      }
 
       int active_fds = sel.select( wait_time );
       if ( active_fds < 0 ) {
@@ -485,6 +498,13 @@ bool STMClient::main( void )
 
       if ( network_ready_to_read ) {
         process_network_input();
+      }
+
+      /* datagrams from local applications to be forwarded to the server */
+      for ( std::vector<int>::const_iterator it = forward_fds.begin(); it != forward_fds.end(); it++ ) {
+        if ( sel.read( *it ) ) {
+          forwarder->read_fd( *it );
+        }
       }
 
       if ( sel.read( STDIN_FILENO )

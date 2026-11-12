@@ -58,7 +58,8 @@ server.) Occasional echo mistakes are corrected within a network
 round-trip and do not cause lasting effect.
 
 \fBmosh\fP does not support X forwarding or the non-interactive uses
-of SSH, including port forwarding or sshfs. \fBmosh\fP works through
+of SSH, including TCP port forwarding or sshfs (see \fB\-L\fP for
+experimental forwarding of UDP). \fBmosh\fP works through
 typical client-side network address translators but requires UDP to
 pass between client and server. By default, \fBmosh\fP uses the ports
 between 60000 and 61000, but allows the user to request a particular
@@ -234,6 +235,25 @@ this disables alternate screen mode.
 Invoke \fBmosh-server\fP locally, without using \fBssh\fP.  This
 option requires the \fBhost\fP argument to be a local, numeric
 IPv4/IPv6 address.  This option is useful for testing.
+
+.TP
+.B \-L \fR[\fP\fIBIND_ADDRESS\fP:\fR]\fP\fIPORT\fP:\fIHOST\fP:\fIHOSTPORT\fP
+.TQ
+.B \-\-udp\-forward=\fR[\fP\fIBIND_ADDRESS\fP:\fR]\fP\fIPORT\fP:\fIHOST\fP:\fIHOSTPORT\fP
+Experimental.  Forward UDP datagrams: datagrams sent to \fIPORT\fP on
+the local machine are carried inside the mosh session and re-sent by
+the server to \fIHOST\fP:\fIHOSTPORT\fP, and replies are returned to
+the local sender.  \fIBIND_ADDRESS\fP defaults to 127.0.0.1; use
+\fB*\fP for all interfaces, and put IPv6 addresses in square brackets.
+The option may be repeated.
+
+Forwarded datagrams are encrypted and follow the session as the client
+roams, but are otherwise as unreliable as UDP: they are not
+retransmitted or reordered.  Datagrams larger than about 1200 bytes
+are dropped.  Forwarding lasts only as long as the terminal session,
+and needs a server that supports it; with an older server nothing is
+forwarded.  Only UDP is forwarded, and only from client to server
+(there is no equivalent of \fBssh \-R\fP).
 
 .TP
 .B \-\-experimental\-remote\-ip={proxy|local|remote}

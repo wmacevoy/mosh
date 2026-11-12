@@ -94,6 +94,7 @@
 #endif
 
 #include "src/network/networktransport-impl.h"
+#include "src/network/udpforward.h"
 
 using ServerConnection = Network::Transport<Terminal::Complete, Network::UserStream>;
 
@@ -101,6 +102,7 @@ static void serve( int host_fd,
                    int pipe_fd,
                    Terminal::Complete& terminal,
                    ServerConnection& network,
+                   Network::UDPForwarder* forwarder,
                    long network_timeout,
                    long network_signaled_timeout );
 
@@ -110,7 +112,8 @@ static int run_server( const char* desired_ip,
                        char* command_argv[],
                        const int colors,
                        unsigned int verbose,
-                       bool with_motd );
+                       bool with_motd,
+                       const std::vector<std::string>& udp_forwards );
 
 static void print_version( FILE* file )
 {
@@ -125,7 +128,8 @@ static void print_version( FILE* file )
 static void print_usage( FILE* stream, const char* argv0 )
 {
   fprintf( stream,
-           "Usage: %s new [-s] [-v] [-i LOCALADDR] [-p PORT[:PORT2]] [-c COLORS] [-l NAME=VALUE] [-- COMMAND...]\n",
+           "Usage: %s new [-s] [-v] [-i LOCALADDR] [-p PORT[:PORT2]] [-c COLORS] [-l NAME=VALUE]\n"
+           "       [-L [BIND:]PORT:HOST:HOSTPORT] [-- COMMAND...]\n",
            argv0 );
 }
 
@@ -192,6 +196,7 @@ int main( int argc, char* argv[] )
   unsigned int verbose = 0; /* don't close stdin/stdout/stderr */
   /* Will cause mosh-server not to correctly detach on old versions of sshd. */
   std::list<std::string> locale_vars;
+  std::vector<std::string> udp_forwards;
 
   /* strip off command */
   for ( int i = 1; i < argc; i++ ) {
@@ -216,7 +221,7 @@ int main( int argc, char* argv[] )
   if ( ( argc >= 2 ) && ( strcmp( argv[1], "new" ) == 0 ) ) {
     /* new option syntax */
     int opt;
-    while ( ( opt = getopt( argc - 1, argv + 1, "@:i:p:c:svl:" ) ) != -1 ) {
+    while ( ( opt = getopt( argc - 1, argv + 1, "@:i:p:c:svl:L:" ) ) != -1 ) {
       switch ( opt ) {
           /*
            * This undocumented option does nothing but eat its argument.
@@ -256,6 +261,10 @@ int main( int argc, char* argv[] )
           break;
         case 'l':
           locale_vars.push_back( std::string( optarg ) );
+          break;
+        case 'L':
+          /* forward UDP datagrams from the client to HOST:HOSTPORT */
+          udp_forwards.push_back( std::string( optarg ) );
           break;
         default:
           /* don't die on unknown options */
@@ -372,7 +381,8 @@ int main( int argc, char* argv[] )
   }
 
   try {
-    return run_server( desired_ip, desired_port, command_path, command_argv, colors, verbose, with_motd );
+    return run_server(
+      desired_ip, desired_port, command_path, command_argv, colors, verbose, with_motd, udp_forwards );
   } catch ( const Network::NetworkException& e ) {
     fprintf( stderr, "Network exception: %s\n", e.what() );
     return 1;
@@ -388,7 +398,8 @@ static int run_server( const char* desired_ip,
                        char* command_argv[],
                        const int colors,
                        unsigned int verbose,
-                       bool with_motd )
+                       bool with_motd,
+                       const std::vector<std::string>& udp_forwards )
 {
   /* get network idle timeout */
   long network_timeout = 0;
@@ -438,6 +449,14 @@ static int run_server( const char* desired_ip,
 
   network->set_verbose( verbose );
   Select::set_verbose( verbose );
+
+  /* UDP forwarding.  Resolve the targets now, while we can still complain. */
+  std::unique_ptr<Network::UDPForwarder> forwarder;
+  if ( !udp_forwards.empty() ) {
+    forwarder.reset( new Network::UDPForwarder( network.get(), Network::UDPForwarder::CONNECT, udp_forwards ) );
+    forwarder->set_verbose( verbose );
+    network->set_sidechannel_sink( forwarder.get() );
+  }
 
   /*
    * If mosh-server is run on a pty, then typeahead may echo and break mosh.pl's
@@ -653,7 +672,7 @@ static int run_server( const char* desired_ip,
 #endif
 
     try {
-      serve( master, pipes[1], terminal, *network, network_timeout, network_signaled_timeout );
+      serve( master, pipes[1], terminal, *network, forwarder.get(), network_timeout, network_signaled_timeout );
     } catch ( const Network::NetworkException& e ) {
       fprintf( stderr, "Network exception: %s\n", e.what() );
     } catch ( const Crypto::CryptoException& e ) {
@@ -679,6 +698,7 @@ static void serve( int host_fd,
                    int pipe_fd,
                    Terminal::Complete& terminal,
                    ServerConnection& network,
+                   Network::UDPForwarder* forwarder,
                    long network_timeout,
                    long network_signaled_timeout )
 {
@@ -746,6 +766,13 @@ static void serve( int host_fd,
       sel.add_fd( network_fd );
       if ( !network.shutdown_in_progress() ) {
         sel.add_fd( host_fd );
+      }
+      std::vector<int> forward_fds;
+      if ( forwarder ) {
+        forward_fds = forwarder->fds();
+        for ( std::vector<int>::const_iterator it = forward_fds.begin(); it != forward_fds.end(); it++ ) {
+          sel.add_fd( *it );
+        }
       }
 
       int active_fds = sel.select( timeout );
@@ -855,6 +882,13 @@ static void serve( int host_fd,
             }
             child_released = true;
           }
+        }
+      }
+
+      /* replies from UDP forwarding targets go back to the client */
+      for ( std::vector<int>::const_iterator it = forward_fds.begin(); it != forward_fds.end(); it++ ) {
+        if ( sel.read( *it ) ) {
+          forwarder->read_fd( *it );
         }
       }
 
