@@ -7,7 +7,10 @@ connection through a forward.  Unlike forward-e2e.py it needs no
 pseudo-terminal of its own, so it also runs under native Windows Python,
 which is the point: it is how the Windows build of mosh-server is tested.
 
-usage: headless-smoke.py MOSH_SERVER MOSH_CLIENT
+usage: headless-smoke.py MOSH_SERVER MOSH_CLIENT [ADDRESS]
+
+ADDRESS is where the session itself runs: 127.0.0.1 by default, or ::1
+to have mosh talk to itself over IPv6.
 """
 
 import os
@@ -19,6 +22,7 @@ import threading
 import time
 
 server_path, client_path = sys.argv[1], sys.argv[2]
+address = sys.argv[3] if len(sys.argv) > 3 else "127.0.0.1"
 windows = os.name == "nt"
 
 # the service being forwarded to: it sends back whatever it gets
@@ -70,14 +74,14 @@ def check(name, ok, detail=""):
         failures.append(name)
 
 
-started = subprocess.run([server_path, "new", "-i", "127.0.0.1", "-L", spec, "--"] + wait,
+started = subprocess.run([server_path, "new", "-i", address, "-L", spec, "--"] + wait,
                          env=env, stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=60)
 match = re.search(r"MOSH CONNECT (\d+) (\S+)", started.stdout)
 check("mosh-server starts and detaches", bool(match), "" if match else repr((started.stdout + started.stderr)[-400:]))
 if not match:
     sys.exit(1)
 
-client = subprocess.Popen([client_path, "-N", "-L", spec, "127.0.0.1", match.group(1)],
+client = subprocess.Popen([client_path, "-N", "-L", spec, address, match.group(1)],
                           env=dict(env, MOSH_KEY=match.group(2)),
                           stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
 said = []

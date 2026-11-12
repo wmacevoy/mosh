@@ -202,6 +202,7 @@ jobs:
       run: |
         .\dist\mosh-msys2\mosh-server.exe --version
         python src\tests\headless-smoke.py dist\mosh-msys2\mosh-server.exe dist\mosh-msys2\mosh-client.exe
+        python src\tests\headless-smoke.py dist\mosh-msys2\mosh-server.exe dist\mosh-msys2\mosh-client.exe ::1
 
     - uses: actions/upload-artifact@v4
       with:
