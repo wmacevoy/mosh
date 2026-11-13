@@ -362,7 +362,9 @@ You need do nothing. What to know:
   NATs keep port numbers as they are and each end knows the other's address.
 - `--punch=never` turns it off. `--relay=always` and `--relay=never` have no
   use for it either.
-- IPv4 only, which is where the NATs are.
+- IPv4 only, which is where the NATs are. A machine with a public IPv6
+  address needs no path found to it, only its firewall opened for UDP
+  60000-61000 and `mosh -6`; see [If you have IPv6](students.md#if-you-have-ipv6).
 
 #### A server of your own
 

@@ -1,0 +1,435 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mosh for Students: slides</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400..700&family=Inter:wght@400;600&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* The page: one slide at a time, drawn at 1920 by 1080 and scaled to fit the window. */
+html, body { margin: 0; height: 100%; background: #0B151C; overflow: hidden; }
+#stage { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; transform-origin: 0 0; }
+section { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; box-sizing: border-box; overflow: hidden; }
+section * { margin: 0; box-sizing: border-box; }
+section.off { display: none !important; }
+section aside { display: none; }
+section ul, section ol { padding-left: 1.2em; }
+section table { border-collapse: collapse; }
+section th { text-align: left; font-weight: 600; }
+section th, section td { padding: 0.4em 0.6em; border-bottom: 2px solid #DED6C4; vertical-align: top; }
+#bar { position: fixed; left: 0; right: 0; bottom: 0; display: flex; gap: 16px; align-items: center; justify-content: center;
+  padding: 8px 12px; font: 14px/1.2 Inter, Arial, sans-serif; color: #B9CDD0; background: rgba(11, 21, 28, 0.85); opacity: 0; transition: opacity 200ms; }
+body:hover #bar, #bar:focus-within { opacity: 1; }
+#bar button { font: inherit; color: #F6F3EC; background: #182C39; border: 1px solid #2A4353; border-radius: 6px; padding: 6px 12px; cursor: pointer; }
+#bar a { color: #5FD6C8; }
+#notes { position: fixed; left: 0; right: 0; bottom: 44px; max-height: 30%; overflow: auto; padding: 16px 24px;
+  font: 18px/1.5 Inter, Arial, sans-serif; color: #F6F3EC; background: rgba(11, 21, 28, 0.95); border-top: 2px solid #5FD6C8; display: none; }
+#notes.on { display: block; }
+
+/* On paper, or saved as a PDF: every slide, one to a page. */
+@media print {
+  @page { size: 1920px 1080px; margin: 0; }
+  html, body { height: auto; overflow: visible; background: none; }
+  #stage { position: static; transform: none !important; width: auto; height: auto; }
+  section, section.off { position: relative; display: flex !important; break-after: page; }
+  #bar, #notes { display: none !important; }
+  .arrive { animation: none !important; }
+}
+
+/* ---- the deck's own look ---- */
+/* Mosh for Students: one dark, one light, a teal and an amber. */
+section {
+  --ink: #10202B;
+  --paper: #F6F3EC;
+  --card: #FFFDF8;
+  --line: #DED6C4;
+  --teal: #0F7F74;
+  --teal-bright: #5FD6C8;
+  --amber: #F2A541;
+  --soft: #3F4E58;
+  --soft-dark: #B9CDD0;
+  padding: 128px;
+  background: #F6F3EC;
+  color: #10202B;
+  font-family: 'Inter', Arial, sans-serif;
+  display: flex;
+  flex-direction: column;
+  gap: 40px;
+}
+section.dark { background: #10202B; color: #F6F3EC; }
+section.amber { background: #F2A541; color: #10202B; }
+
+h1, h2, h3 { font-family: 'Space Grotesk', Arial, sans-serif; }
+h1 { font-size: 120px; font-weight: 700; line-height: 1.02; letter-spacing: -2px; }
+h2 { font-size: 64px; font-weight: 600; line-height: 1.1; letter-spacing: -1px; }
+h3 { font-size: 36px; font-weight: 600; line-height: 1.2; }
+
+.eyebrow { font-size: 24px; font-weight: 600; letter-spacing: 4px; color: #0F7F74; }
+.dark .eyebrow { color: #5FD6C8; }
+.amber .eyebrow { color: #10202B; }
+
+.lede { font-size: 40px; line-height: 1.35; color: #3F4E58; }
+.dark .lede { color: #B9CDD0; }
+.body { font-size: 32px; line-height: 1.4; color: #3F4E58; }
+.dark .body { color: #B9CDD0; }
+.small { font-size: 26px; line-height: 1.4; color: #3F4E58; }
+.dark .small { color: #B9CDD0; }
+
+.statement { font-family: 'Space Grotesk', Arial, sans-serif; font-size: 96px; font-weight: 600; line-height: 1.08; letter-spacing: -2px; }
+.accent { color: #0F7F74; }
+.dark .accent { color: #5FD6C8; }
+.warm { color: #F2A541; }
+
+.spacer { flex: 1; }
+
+/* rows of cards */
+.cards { display: flex; gap: 32px; }
+.card { flex: 1; display: flex; flex-direction: column; gap: 16px; padding: 40px; border-radius: 20px; background: #FFFDF8; border: 2px solid #DED6C4; }
+.dark .card { background: #182C39; border: 2px solid #2A4353; }
+.card .body { font-size: 28px; }
+.card .tag { font-size: 24px; font-weight: 600; letter-spacing: 3px; color: #0F7F74; }
+.dark .card .tag { color: #5FD6C8; }
+
+/* things you type */
+.code { font-family: 'JetBrains Mono', 'Courier New', monospace; font-size: 28px; line-height: 1.55; background: #0C1820; color: #D7F0EC; padding: 32px 40px; border-radius: 16px; }
+.code .dim { color: #7FA3A8; }
+.code .hot { color: #F2A541; }
+.code.tight { font-size: 25px; line-height: 1.5; padding: 28px 36px; }
+.inline { font-family: 'JetBrains Mono', 'Courier New', monospace; font-size: 30px; color: #0F7F74; }
+.dark .inline { color: #5FD6C8; }
+
+/* numbered steps */
+.steps { display: flex; flex-direction: column; gap: 28px; }
+.step { display: flex; gap: 32px; align-items: flex-start; }
+.step .n { width: 72px; font-family: 'Space Grotesk', Arial, sans-serif; font-size: 56px; font-weight: 700; line-height: 1; color: #F2A541; }
+.step .what { flex: 1; display: flex; flex-direction: column; gap: 12px; }
+
+/* two columns */
+.split { display: flex; gap: 64px; align-items: stretch; }
+.split .col { flex: 1; display: flex; flex-direction: column; gap: 28px; }
+
+/* the ladder of ways through */
+.ladder { display: flex; flex-direction: column; gap: 20px; }
+.rung { display: flex; gap: 32px; align-items: center; padding: 26px 36px; border-radius: 16px; background: #182C39; border: 2px solid #2A4353; }
+.rung .n { width: 56px; font-family: 'Space Grotesk', Arial, sans-serif; font-size: 48px; font-weight: 700; color: #5FD6C8; }
+.rung .name { width: 560px; font-family: 'Space Grotesk', Arial, sans-serif; font-size: 34px; font-weight: 600; color: #F6F3EC; }
+.rung .why { flex: 1; font-size: 26px; line-height: 1.35; color: #B9CDD0; }
+.rung.last .n { color: #F2A541; }
+
+/* little network pictures */
+.net { display: flex; align-items: center; gap: 20px; }
+.node { display: flex; flex-direction: column; gap: 6px; align-items: center; justify-content: center; padding: 26px 28px; border-radius: 16px; background: #FFFDF8; border: 2px solid #DED6C4; min-width: 200px; }
+.node .who { font-family: 'Space Grotesk', Arial, sans-serif; font-size: 30px; font-weight: 600; color: #10202B; }
+.node .where { font-size: 24px; color: #3F4E58; }
+.node.wall { background: #10202B; border: 2px solid #10202B; }
+.node.wall .who { color: #F6F3EC; }
+.node.wall .where { color: #B9CDD0; }
+.node.cloud { background: #F2A541; border: 2px solid #F2A541; }
+.wire { flex: 1; height: 6px; border-radius: 3px; background: #0F7F74; min-width: 40px; }
+.wire.faint { background: #DED6C4; }
+
+/* tables */
+table { font-size: 28px; color: #10202B; width: 100%; }
+.dark table { color: #F6F3EC; }
+
+/* footer */
+.foot { position: absolute; left: 128px; bottom: 64px; width: 1664px; font-size: 24px; color: #7C8A91; }
+.dark .foot { color: #6F8B93; }
+
+/* arriving */
+@keyframes rise { from { opacity: 0; transform: translateY(24px); } }
+.arrive { animation: rise 500ms ease-out both; animation-delay: calc(var(--i, 0) * 120ms); }
+
+</style>
+</head>
+<body>
+<div id="stage">
+<section id="cover" class="dark">
+<p class="eyebrow">MOSH, WITH PORT FORWARDING · FOR STUDENTS</p>
+<div class="spacer"></div>
+<h1>A connection that<br><span class="accent">does not drop.</span></h1>
+<p class="lede" style="width:1200px">Close the laptop. Change buildings. Lose the Wi-Fi. Your work on the server is still there when you come back.</p>
+<div class="spacer"></div>
+<p class="small">Why you want it · how to set it up · how it works · a relay of your own</p>
+<aside>Open with the experience everyone in the room has had: an ssh session that died and took a long-running job with it. This deck is about never having that happen again, and it takes about ten minutes to set up. Note up front that this is an unofficial, experimental build of mosh.</aside>
+</section>
+<section id="problem">
+<p class="eyebrow">THE PROBLEM</p>
+<h2>ssh is a phone call.</h2>
+<div class="cards">
+<div class="card arrive" style="--i:0"><p class="tag">YOU CLOSE THE LID</p><h3>The call drops.</h3><p class="body">The terminal on the server ends, and what was running in it ends too.</p></div>
+<div class="card arrive" style="--i:1"><p class="tag">YOU WALK TO CLASS</p><h3>New Wi-Fi, new address.</h3><p class="body">The server is still talking to where you used to be.</p></div>
+<div class="card arrive" style="--i:2"><p class="tag">THE WI-FI BLINKS</p><h3>Frozen cursor.</h3><p class="body">You wait, give up, log in again, and try to remember where you were.</p></div>
+</div>
+<div class="spacer"></div>
+<p class="lede">None of this is your fault. It is how one long connection behaves on a network that moves.</p>
+<aside>ssh carries everything over a single TCP connection. If that connection breaks for any reason, the session is gone. Laptops break it constantly: sleep, roaming between access points, a few seconds of lost signal.</aside>
+</section>
+<section id="promise" class="amber">
+<p class="eyebrow">THE PROMISE</p>
+<div class="spacer"></div>
+<p class="statement">Open the laptop.<br>Your terminal is exactly where you left it.</p>
+<div class="spacer"></div>
+<p class="lede" style="color:#10202B">mosh keeps the session alive on the server and finds its way back to it by itself, from wherever you are.</p>
+<aside>This is the one sentence to remember. Demonstrate it live if you can: connect, close the lid for thirty seconds, open it, keep typing.</aside>
+</section>
+<section id="get">
+<p class="eyebrow">WHAT YOU GET</p>
+<h2>Four things, one session</h2>
+<div class="cards">
+<div class="card"><p class="tag">TERMINAL</p><h3>A shell that survives</h3><p class="body">Sleep, roaming and outages are a pause, not an ending.</p></div>
+<div class="card"><p class="tag">WEB PAGES</p><h3>The server’s ports, on your laptop</h3><p class="body">Run the site there; open it in your own browser here.</p></div>
+</div>
+<div class="cards">
+<div class="card"><p class="tag">FILES</p><h3>Copies that finish</h3><p class="body">Interrupted copies carry on where they stopped. A folder can be kept up to date.</p></div>
+<div class="card"><p class="tag">AWKWARD NETWORKS</p><h3>It finds a way through</h3><p class="body">Blocked on campus, or a machine behind a home router: it works it out without being asked.</p></div>
+</div>
+<aside>Standard mosh gives you the first card only. This build adds the other three: port forwarding, file copying with mocp, and getting through networks and routers that would otherwise stop it.</aside>
+</section>
+<section id="setup" style="gap:32px">
+<p class="eyebrow">SET IT UP · TEN MINUTES</p>
+<h2>Three steps, no administrator</h2>
+<div class="steps">
+<div class="step"><p class="n">1</p><div class="what"><h3>Make ssh log in without a password</h3><p class="code tight">ssh-keygen -t ed25519 <span class="dim"># Enter at each question</span><br>ssh-copy-id you@server <span class="dim"># your password, one last time</span></p></div></div>
+<div class="step"><p class="n">2</p><div class="what"><h3>Install on your laptop, then the same line on the server</h3><p class="code tight">curl -fsSL https://raw.githubusercontent.com/wmacevoy/mosh/master/scripts/install.sh | sh</p></div></div>
+<div class="step"><p class="n">3</p><div class="what"><h3>Connect</h3><p class="code tight">mosh you@server</p></div></div>
+</div>
+<p class="foot">Linux and macOS. On Windows, use WSL and follow the Linux steps. Installs into your own home directory.</p>
+<aside>Step 1 is where people get stuck: mosh starts with ssh, and some features log in again in the background where nobody can type a password. Step 2 is one line, run twice: once on the laptop, once on the server (ssh in and paste it, or run it through ssh). Both ends need this build. Then close the lid and open it again to see the point.</aside>
+</section>
+<section id="commands">
+<p class="eyebrow">THE COMMANDS YOU WILL ACTUALLY USE</p>
+<h2>Terminal, web page, files</h2>
+<div class="steps" style="gap:36px">
+<div class="step"><div class="what"><h3>Work on the server, and keep your work if the window closes</h3><p class="code">mosh you@server -- tmux new -A -s main</p></div></div>
+<div class="step"><div class="what"><h3>See the site that runs on the server at <span class="accent">http://localhost:8080</span></h3><p class="code">mosh <span class="hot">-L 8080:localhost:8080</span> you@server</p></div></div>
+<div class="step"><div class="what"><h3>Copy a folder of results to your laptop</h3><p class="code"><span class="hot">mocp -r</span> you@server:project/out .</p></div></div>
+</div>
+<aside>tmux is optional but worth it: mosh keeps the connection, tmux keeps the work even if the terminal window itself is closed. The -L option works exactly as it does in ssh. mocp is scp with mosh's patience: a copy that is interrupted waits, and one that is killed carries on where it stopped when you run it again.</aside>
+</section>
+<section id="auto" class="dark">
+<p class="eyebrow">THE ONE PEOPLE LIKE MOST</p>
+<h2>Build there. Look here.</h2>
+<p class="code" style="font-size:36px;padding:40px 48px">mocp <span class="hot">--auto</span> -r you@server:project/out ./out</p>
+<div class="cards">
+<div class="card"><h3>It stays running</h3><p class="body">Every two seconds it looks for what is new or changed on the server.</p></div>
+<div class="card"><h3>Your copy follows</h3><p class="body">The plot, the PDF, the build output appear on your laptop as they are made.</p></div>
+<div class="card"><h3>Through anything</h3><p class="body">Lose the network and it waits. Nothing arrives half-written.</p></div>
+</div>
+<div class="spacer"></div>
+<p class="small">One way only, and it copies everything it is pointed at: aim it at the folder of results, not the whole project.</p>
+<aside>Leave this in its own terminal. It is one-way, from the source to the destination: edits made in the copy are not sent back. Add --delete to also remove files that disappear at the source. Changed files are sent whole.</aside>
+</section>
+<section id="notebooks">
+<p class="eyebrow">HOW IT WORKS</p>
+<h2>Not a phone call. Two notebooks.</h2>
+<div class="split">
+<div class="col card">
+<p class="tag">SSH</p>
+<h3>One connection, every byte in order</h3>
+<div class="net"><div class="node"><p class="who">laptop</p></div><div class="wire faint"></div><div class="node"><p class="who">server</p></div></div>
+<p class="body">Break the line and the conversation is over. The server cannot tell “asleep” from “gone”.</p>
+</div>
+<div class="col card">
+<p class="tag">MOSH</p>
+<h3>A copy of the screen at each end, and small sealed notes</h3>
+<div class="net"><div class="node"><p class="who">laptop</p></div><div class="wire"></div><div class="node"><p class="who">server</p></div></div>
+<p class="body">Each note says “here is what changed”. Notes can be lost, late, or come from a new address. The next one catches the other end up.</p>
+</div>
+</div>
+<div class="spacer"></div>
+<p class="lede">Web pages and files need every byte, so this build runs a small reliable channel inside the same notes. When the network goes, it waits.</p>
+<aside>ssh uses TCP: one ordered stream. mosh uses UDP datagrams, each encrypted and authenticated, and synchronises the state of the screen instead of replaying a stream. That is why it does not care when your address changes or packets go missing. Port forwarding and mocp ride on a small TCP of mosh's own, carried inside those same datagrams.</aside>
+</section>
+<section id="tiers" class="dark" style="gap:32px">
+<p class="eyebrow">WHEN THE NETWORK FIGHTS BACK</p>
+<h2>Four ways through, best first</h2>
+<div class="ladder">
+<div class="rung arrive" style="--i:0"><p class="n">1</p><p class="name">Straight there</p><p class="why">The normal case: the server has a public address.</p></div>
+<div class="rung arrive" style="--i:1"><p class="n">2</p><p class="name">Straight through the routers</p><p class="why">Both ends behind home routers: they open a path between them.</p></div>
+<div class="rung arrive" style="--i:2"><p class="n">3</p><p class="name">Passed along by your relay</p><p class="why">Routers that cannot be opened: a machine both can reach hands it on. Still fast.</p></div>
+<div class="rung last arrive" style="--i:3"><p class="n">4</p><p class="name">Inside an ssh connection</p><p class="why">Networks that block everything else. It works, but it is the phone call again.</p></div>
+</div>
+<p class="small">You choose nothing. mosh tries them without being asked, uses the best that works, and keeps trying the better ones.</p>
+<aside>Standard mosh has only the first. If its UDP is blocked it sits at Connecting forever. This build falls back to ssh after three seconds, and from there looks for something better: a direct path through the NAT routers, or UDP by way of a relay. When you change networks it starts again from the top by itself.</aside>
+</section>
+<section id="punch" style="gap:32px">
+<p class="eyebrow">HOW TWO HIDDEN MACHINES MEET</p>
+<h2>A router only lets answers in</h2>
+<div class="net">
+<div class="node"><p class="who">laptop</p><p class="where">café</p></div>
+<div class="wire"></div>
+<div class="node wall"><p class="who">router</p><p class="where">lets answers in</p></div>
+<div class="wire"></div>
+<div class="node wall"><p class="who">router</p><p class="where">lets answers in</p></div>
+<div class="wire"></div>
+<div class="node"><p class="who">desktop</p><p class="where">home</p></div>
+</div>
+<div class="cards">
+<div class="card arrive" style="--i:0"><p class="tag">1 · ASK</p><h3>“Where do I appear to be?”</h3><p class="body">Each end asks a server outside. That question has a name: STUN.</p></div>
+<div class="card arrive" style="--i:1"><p class="tag">2 · TELL</p><h3>Swap addresses</h3><p class="body">Over the ssh connection they already have. Sealed with a fresh key.</p></div>
+<div class="card arrive" style="--i:2"><p class="tag">3 · SEND, BOTH AT ONCE</p><h3>Each router sees an answer</h3><p class="body">It sent something out, something came back. The path is open.</p></div>
+</div>
+<p class="small">Two laptops in the same room skip the routers altogether and find each other on the local network.</p>
+<aside>This is called hole punching. It is the same technique video calls and Tailscale use. It fails on routers that give out a different outside address for every destination, which many phone networks and some campuses do. Then mosh uses the relay instead.</aside>
+</section>
+<section id="relay-why" style="gap:32px">
+<p class="eyebrow">A RELAY OF YOUR OWN · OPTIONAL</p>
+<h2>One tiny cloud machine both ends can reach</h2>
+<div class="net">
+<div class="node"><p class="who">laptop</p><p class="where">anywhere</p></div>
+<div class="wire"></div>
+<div class="node cloud"><p class="who">your relay</p><p class="where">public address</p></div>
+<div class="wire"></div>
+<div class="node"><p class="who">desktop</p><p class="where">behind a router</p></div>
+</div>
+<div class="cards">
+<div class="card"><p class="tag">IT INTRODUCES</p><h3>“You appear to be here.”</h3><p class="body">So the two ends can find a direct path. After that it carries nothing.</p></div>
+<div class="card"><p class="tag">IT PASSES ALONG</p><h3>When no direct path exists</h3><p class="body">It hands each end’s traffic to the other. It cannot read any of it.</p></div>
+<div class="card"><p class="tag">IT IS PRIVATE</p><h3>A key only you have</h3><p class="body">Without the key it does not answer at all.</p></div>
+</div>
+<p class="small">You need this only to reach a machine with no public address. For a course server, skip it.</p>
+<aside>A course server normally has a public address, and plain mosh reaches it. The relay is for the other case: your own machine at home or in a lab, behind a router that nothing outside can start a conversation with. The smallest instance any cloud offers is enough, because most of the time it only makes introductions.</aside>
+</section>
+<section id="aws-launch" style="gap:32px">
+<p class="eyebrow">YOUR RELAY ON AWS · STEP 1 OF 3</p>
+<h2>Launch a free-tier instance</h2>
+<div class="split">
+<div class="col">
+<p class="body">In the AWS console: <b>EC2</b>, then <b>Launch instance</b>.</p>
+<table>
+<tr><th style="width:38%">Setting</th><th style="width:62%">Choose</th></tr>
+<tr><td>Name</td><td>mosh-relay</td></tr>
+<tr><td>Image</td><td>Ubuntu Server 24.04 LTS</td></tr>
+<tr><td>Instance type</td><td>the one marked “Free tier eligible”</td></tr>
+<tr><td>Key pair</td><td>create one; keep the .pem file</td></tr>
+</table>
+</div>
+<div class="col">
+<p class="body">Under <b>Network settings</b>, allow two things in:</p>
+<table>
+<tr><th style="width:34%">Type</th><th style="width:22%">Port</th><th style="width:44%">For</th></tr>
+<tr><td>SSH (TCP)</td><td>22</td><td>logging in</td></tr>
+<tr><td>Custom UDP</td><td>60000</td><td>the relay</td></tr>
+</table>
+<p class="body">Launch, and note the <b>Public IPv4 address</b>. On the next slides it is written <span class="inline">RELAY</span>.</p>
+</div>
+</div>
+<p class="foot">Check what the free tier covers for your account first: it has changed over the years. Terminate the instance when you are done with it.</p>
+<aside>These are the standard console steps; they have not been run on AWS by the author, and the console's wording shifts over time. Any cloud's smallest instance works the same way: a public address, ssh in, and one UDP port open. Source "Anywhere" is fine for both rules, because the relay ignores anyone without the key.</aside>
+</section>
+<section id="aws-start" style="gap:28px">
+<p class="eyebrow">YOUR RELAY ON AWS · STEP 2 OF 3</p>
+<h2>Install it, make a key, start it</h2>
+<p class="code tight"><span class="dim"># from your laptop</span><br>ssh -i mosh-relay.pem ubuntu@RELAY<br><br><span class="dim"># on the relay: install, and make the key that makes it yours</span><br>curl -fsSL https://raw.githubusercontent.com/wmacevoy/mosh/master/scripts/install.sh | sh<br>mkdir -p ~/.config/mosh<br>echo "MOSH_STUN_KEY=$(~/.local/bin/mosh-server <span class="hot">stun-key</span>)" > ~/.config/mosh/stun.env<br>chmod 600 ~/.config/mosh/stun.env<br><br><span class="dim"># what the service runs, now and after every reboot</span><br>~/.local/bin/mosh-server <span class="hot">stun 60000</span></p>
+<p class="small">The handout has the short service file that starts it at boot (<span class="inline" style="font-size:26px">systemctl enable --now mosh-relay</span>). Copy the key out of <span class="inline" style="font-size:26px">stun.env</span>: your laptop needs it next.</p>
+<aside>mosh-server stun-key prints a new random key. mosh-server stun 60000 is the relay itself: with MOSH_STUN_KEY set it answers only requests that carry proof of the key, and passes traffic along only for them. The README gives a systemd unit that reads the key from stun.env and restarts the relay if it stops.</aside>
+</section>
+<section id="aws-use" style="gap:28px">
+<p class="eyebrow">YOUR RELAY ON AWS · STEP 3 OF 3</p>
+<h2>Point your laptop at it, and reach home</h2>
+<div class="split">
+<div class="col">
+<h3>On your laptop, once</h3>
+<p class="code tight"><span class="dim"># in ~/.bashrc or ~/.zshrc</span><br>export MOSH_STUN=RELAY:60000<br>export MOSH_STUN_KEY=your-key</p>
+<h3>On the machine at home, kept running</h3>
+<p class="code tight">ssh -N <span class="hot">-R 2222:localhost:22</span> \<br>&#160;&#160;&#160;&#160;ubuntu@RELAY</p>
+<p class="small">It holds a door open: port 2222 on the relay now leads to the home machine’s ssh.</p>
+</div>
+<div class="col">
+<h3>In ~/.ssh/config on your laptop</h3>
+<p class="code tight">Host relay<br>&#160;&#160;HostName RELAY<br>&#160;&#160;User ubuntu<br><br>Host home<br>&#160;&#160;HostName localhost<br>&#160;&#160;Port 2222<br>&#160;&#160;<span class="hot">ProxyJump relay</span></p>
+<h3>Then</h3>
+<p class="code tight">mosh --experimental-remote-ip=remote home</p>
+</div>
+</div>
+<aside>The first few seconds travel through the relay inside ssh. Then the two ends find each other and the session moves to a direct connection, or to UDP passed along by the relay if a direct one is impossible. mocp and -L work the same way with the same option. This arrangement is tested in a lab with real NAT routers, with a stand-in for the ssh hop; try it yourself before relying on it. The handout adds the IdentityFile and User lines.</aside>
+</section>
+<section id="tested">
+<p class="eyebrow">BEFORE YOU RELY ON IT</p>
+<h2>What is tested, and what is not</h2>
+<div class="split">
+<div class="col card">
+<p class="tag">TESTED ON EVERY CHANGE</p>
+<h3>Linux, macOS, Windows builds</h3>
+<p class="body">Terminal sessions, forwarding, copies that resume, the ssh fallback.</p>
+<p class="body">A lab with two real NAT routers: a direct path found, a router that cannot be opened, an address that changes mid-session, two machines on one network, traffic passed along by a keyed relay.</p>
+<p class="body">Fuzzers and memory checkers on everything that reads from the network.</p>
+</div>
+<div class="col card">
+<p class="tag">NOT YET</p>
+<h3>The real world</h3>
+<p class="body">Home routers that are not Linux, phone networks, and campus networks.</p>
+<p class="body">The AWS steps and the jump-host arrangement, end to end with a real ssh.</p>
+<p class="body">The native Windows programs beyond starting up. Use WSL.</p>
+<p class="body">Any outside review: this is an unofficial, experimental build of mosh.</p>
+</div>
+</div>
+<aside>Be straightforward about this with students. The parts they use every day, the terminal, forwarding and copying, are the best tested. The relay and hole punching are new, are tested against real address translation in a lab, and have not yet met the variety of routers out in the world. When something cannot be done the session falls back to ssh; it does not fail.</aside>
+</section>
+<section id="editor" class="dark">
+<p class="eyebrow">BATTERIES INCLUDED</p>
+<h2>Prefer an editor to a terminal?</h2>
+<p class="lede" style="width:1400px">The <span class="accent">remote-mosh</span> extension for VSCodium does all of this for you. You type <span class="inline" style="font-size:38px">you@server</span>.</p>
+<div class="cards">
+<div class="card"><h3>Installs mosh at both ends</h3><p class="body">Nothing to set up by hand beyond your ssh key.</p></div>
+<div class="card"><h3>Edit on the server, from your laptop</h3><p class="body">The same survival of sleep and changing networks.</p></div>
+<div class="card"><h3>Tick folders to keep locally</h3><p class="body">Results appear on your laptop as they are made.</p></div>
+</div>
+<div class="spacer"></div>
+<p class="body">Start here: <span class="accent">wmacevoy.github.io/mosh/students</span></p>
+<p class="small">The extension is earlier in its life than mosh itself. Ask whether it is ready for your course.</p>
+<aside>End on the next step: the student page has every command from this deck, in order, ready to copy. The extension lives at github.com/wmacevoy/remote-mosh and at the time of writing has not been run inside an editor by anyone but its tests, so introduce it as coming, not as finished.</aside>
+</section>
+</div>
+<div id="notes" aria-live="polite"></div>
+<div id="bar">
+<button id="prev" aria-label="Previous slide">&larr;</button>
+<span id="count"></span>
+<button id="next" aria-label="Next slide">&rarr;</button>
+<button id="toggle">Notes (n)</button>
+<span>Arrow keys or click to move &middot; <a href="../students.html">the written guide</a></span>
+</div>
+<script>
+(function () {
+  var slides = Array.prototype.slice.call(document.querySelectorAll('#stage > section'));
+  var stage = document.getElementById('stage'), notes = document.getElementById('notes'), count = document.getElementById('count');
+  var at = 0;
+  function fit() {
+    var k = Math.min(window.innerWidth / 1920, window.innerHeight / 1080);
+    stage.style.transform = 'translate(' + (window.innerWidth - 1920 * k) / 2 + 'px,' + (window.innerHeight - 1080 * k) / 2 + 'px) scale(' + k + ')';
+  }
+  function show(n) {
+    at = Math.max(0, Math.min(slides.length - 1, n));
+    slides.forEach(function (s, i) { s.classList.toggle('off', i !== at); });
+    var aside = slides[at].querySelector('aside');
+    notes.textContent = aside ? aside.textContent : '';
+    count.textContent = (at + 1) + ' / ' + slides.length;
+    if (location.hash !== '#' + (at + 1)) { history.replaceState(null, '', '#' + (at + 1)); }
+  }
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'ArrowRight' || e.key === 'PageDown' || e.key === ' ') { show(at + 1); e.preventDefault(); }
+    else if (e.key === 'ArrowLeft' || e.key === 'PageUp') { show(at - 1); e.preventDefault(); }
+    else if (e.key === 'Home') { show(0); }
+    else if (e.key === 'End') { show(slides.length - 1); }
+    else if (e.key === 'n') { notes.classList.toggle('on'); }
+  });
+  stage.addEventListener('click', function (e) { show(at + (e.clientX < window.innerWidth / 3 ? -1 : 1)); });
+  document.getElementById('prev').addEventListener('click', function () { show(at - 1); });
+  document.getElementById('next').addEventListener('click', function () { show(at + 1); });
+  document.getElementById('toggle').addEventListener('click', function () { notes.classList.toggle('on'); });
+  var x0 = null;
+  document.addEventListener('touchstart', function (e) { x0 = e.touches[0].clientX; }, { passive: true });
+  document.addEventListener('touchend', function (e) {
+    if (x0 === null) { return; }
+    var dx = e.changedTouches[0].clientX - x0; x0 = null;
+    if (Math.abs(dx) > 40) { show(at + (dx < 0 ? 1 : -1)); }
+  });
+  window.addEventListener('resize', fit);
+  window.addEventListener('hashchange', function () { show((parseInt(location.hash.slice(1), 10) || 1) - 1); });
+  fit();
+  show((parseInt(location.hash.slice(1), 10) || 1) - 1);
+})();
+</script>
+</body>
+</html>

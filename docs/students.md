@@ -7,7 +7,8 @@ title: Start here (students)
 # A connection that does not drop
 
 *For students who work on a remote machine. Ten minutes from nothing to
-working. No administrator needed.*
+working. No administrator needed.* There are [slides](slides/) that go with
+this page.
 
 This is an unofficial, experimental build of [mosh](https://mosh.org). It has
 not been reviewed by the mosh project or audited for security. It is used
@@ -325,6 +326,79 @@ and `-L` work the same way: `mocp --experimental-remote-ip=remote ...`.
 When you are finished with the relay for good, **terminate the instance** in
 the EC2 console so that it cannot cost you anything.
 
+## If you have IPv6
+
+*Optional, and worth two minutes if the machine you want to reach is at
+home.*
+
+Everything above about relays exists because of one fact: there are not
+enough of the old kind of Internet address (IPv4) to go round, so a home
+router shares one among all the machines behind it, and nothing outside can
+address any of them. The new kind (IPv6) has no such shortage. On a network
+that has IPv6, **every machine gets a public address of its own**. Your
+desktop at home may already be directly addressable from anywhere, with no
+relay and no cloud machine in the picture.
+
+**Do you have it?** On each machine:
+
+```
+ip -6 addr show scope global      # Linux
+ifconfig | grep inet6             # macOS
+```
+
+An address that begins with `2` or `3` (for instance `2a01:4ff:f0:3b86::1`)
+is a public one. One beginning `fe80` is only for the local network, and one
+beginning `fd` is private; neither will do.
+
+**Both ends need it**: the machine at home, and whatever network your laptop
+is on at the time. Home connections and phone networks very often have IPv6.
+Campus and café Wi-Fi often do not. The quick test, from the laptop:
+
+```
+ssh -6 you@your-home-machine
+```
+
+**A public address is not an open door.** The home router still has a
+firewall, and it still lets in only answers to what went out. So one thing
+has to be done once, in the router's settings (look for "IPv6 firewall" or
+"IPv6 pinhole"): allow, *to that one machine*,
+
+| Protocol | Port | For |
+|---|---|---|
+| TCP | 22 | ssh, which starts every session |
+| UDP | 60000 to 61000 | mosh |
+
+Then mosh goes straight there:
+
+```
+mosh -6 you@your-home-machine
+```
+
+The `-6` matters when the name has both kinds of address: mosh otherwise
+tries the old kind first. `mocp -6 ...` works the same way.
+
+Things to know:
+
+- **This puts your machine's ssh on the Internet.** Use keys only: on the
+  home machine set `PasswordAuthentication no` in `/etc/ssh/sshd_config`,
+  and keep it updated. If that sentence makes you uneasy, use the relay
+  instead; it needs no door opened at home.
+- **The address can change.** Home connections are sometimes given a new
+  IPv6 prefix, and machines also make temporary addresses that are replaced
+  every day or so (marked `temporary` in the listing). Use the address that
+  is *not* marked temporary, and give it a name with a dynamic DNS service
+  if your connection renumbers.
+- **When your laptop is somewhere without IPv6**, the home machine's IPv6
+  address is unreachable from there. The relay still works from anywhere,
+  so the two are worth having together: IPv6 when you can, the relay when
+  you cannot.
+- **What this build does not yet do with IPv6.** The automatic path-finding
+  through routers ("hole punching") and `mosh-server stun` speak IPv4 only.
+  So mosh will not open an IPv6 firewall for you the way it gets through an
+  IPv4 router: the rule above has to be there. And a relay needs an IPv4
+  address, which is the part a cloud provider may charge for. The fallback
+  through ssh does work over IPv6.
+
 ## How it works
 
 **ssh is a phone call; mosh is a pair of notebooks.** ssh sends every
@@ -374,6 +448,9 @@ folders you tick copied to your laptop. It is earlier in its life than mosh
 itself. Ask your instructor whether it is ready for your course.
 
 ## More
+
+- [The slides](slides/) for this page (arrow keys to move, `n` for notes;
+  print them to make a PDF).
 
 - [Using it](usage.md): every option.
 - [How it works](design.md): the full story, for the curious.

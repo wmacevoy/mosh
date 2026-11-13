@@ -71,7 +71,8 @@ It also makes UDP forwarding possible at all, which ssh does not offer.
 
 - **[Start here](students.md)**: what this is, why you want it, and how to
   set it up, for someone who has not used mosh. Includes a relay of your own
-  on a free cloud machine.
+  on a free cloud machine, and what changes if you have IPv6. There are
+  [slides](slides/) to go with it.
 - [Using it](usage.md): options, examples, building, troubleshooting.
 - [How it works](design.md): the side channel, the wire format, and the
   design choices.

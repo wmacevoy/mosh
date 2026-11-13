@@ -155,6 +155,12 @@ network that is merely away, so while it hears nothing from the server it
 tries ssh again: a few times in the first minutes, then every five. Those
 show in the server's log as failed logins; `--relay=never` stops them.
 
+**IPv6.** Sessions, forwarding, copying and the ssh fallback work over IPv6
+(`mosh -6`). Path-finding does not: neither hole punching nor
+`mosh-server stun` speaks IPv6, so a firewall in front of a machine with a
+public IPv6 address has to be opened by hand, and a relay has to have an
+IPv4 address.
+
 **Hole punching is IPv4 only, and does not get through every NAT.** Where it
 does not, the session stays on ssh. It asks third parties (public STUN
 servers, by default) where each end appears to be, which tells them those
