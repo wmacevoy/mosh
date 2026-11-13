@@ -155,6 +155,12 @@ network that is merely away, so while it hears nothing from the server it
 tries ssh again: a few times in the first minutes, then every five. Those
 show in the server's log as failed logins; `--relay=never` stops them.
 
+**A Windows server is experimental.** `mosh-server.exe` is built and shipped,
+and passes its tests on one machine. But sessions to a Windows server have
+been seen to drop just after connecting, three different ways and not every
+time, and the cause is not known. It has never been used through Windows's
+own ssh server or its firewall. Provided, not promised.
+
 **IPv6.** Sessions, forwarding, copying and the ssh fallback work over IPv6
 (`mosh -6`). Path-finding does not: neither hole punching nor
 `mosh-server stun` speaks IPv6, so a firewall in front of a machine with a

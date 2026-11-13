@@ -41,7 +41,12 @@ later have (`ssh.exe`), and from 1.4.0-pf.5 nothing else: no Perl, and no
 MSYS2 installation. That has been checked only as far as the programs
 starting on Windows; see [Status and limits](status.md).
 
-A Windows machine can be the server too (from release 1.4.0-pf.2): start
+**A Windows machine as the server is experimental.** It is built and
+shipped, and sessions to one have been seen to end just after connecting,
+for a reason not yet found; do not rely on it. A Windows machine as *your*
+machine, talking to a Linux or macOS server, is the better-trodden path.
+
+A Windows machine can be the server (from release 1.4.0-pf.2): start
 `mosh-server.exe` there, for instance over Windows's own OpenSSH server.
 Windows blocks incoming UDP unless told otherwise, so allow it for
 `mosh-server.exe` in the firewall first. (Before 1.4.0-pf.3 it also had to
