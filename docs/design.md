@@ -305,6 +305,56 @@ that was, and carries ssh's bytes.
 The script is kept (`scripts/mosh.pl`, installed as `mosh.pl`) and the two are
 tested side by side on the same tasks.
 
+## Through NATs
+
+The relay gets a session through when UDP cannot reach the server, at the
+price of carrying it in a stream. When the reason is a NAT in front of the
+server, there is usually a way for UDP after all, and the relay is where to
+look for it, because the relay is a conversation the two ends are already
+having.
+
+A NAT lets a datagram in only where one has lately gone out the other way.
+If both ends send to each other at once, each NAT takes the other's datagrams
+for answers and lets them in: hole punching (RFC 5128). Each end needs to
+know where the other appears to be from outside. So:
+
+```
+local relay                                       remote relay
+   |  <------------- HELLO (over ssh) -------------  |   "I know how"
+   |  ---- KEY, STUN servers, my port ------------>  |
+   |== asks a STUN server where it appears to be ==  |== and so does this ==
+   |  <------------ where each may be reached ---->  |
+   |  ............ probes, both ways, by UDP .......  |
+   |  ============ the session, by UDP ============  |
+```
+
+Each relay opens a UDP socket for this, asks a STUN server (RFC 8489) where
+datagrams from it appear to come from, and adds its own addresses on its own
+network. The two exchange those over the stream, as frames that begin with a
+mark no mosh datagram begins with, and send probes to every one of them, four
+times a second at first. A probe is sealed with a key the local relay makes
+up and sends over ssh, and is numbered, so only the other relay can answer
+one or say where the other relay is; whichever address a newer genuine probe
+comes from is where that end now is, as with mosh itself. Once probes are
+being answered, the session's datagrams go that way.
+
+Nothing is decided once and for all. The local relay goes on as before: it
+sends by every route by UDP it has, and by the stream as well whenever
+nothing has come back by UDP for 2.5 seconds. So the stream falls idle when
+the direct path works, and is closed after a minute; and is started again,
+with a new attempt, when the path stops working. The remote relay, which used
+to end with its ssh connection, now stays on (as a process of its own) while
+it is one end of a path that is in use, and for a minute after it last was.
+The local relay tells it when the client is finished.
+
+`mosh-server` and `mosh-client` are not changed by any of this: each still
+talks to a relay on its own machine.
+
+What it cannot do: a NAT that gives a different outside address for each
+destination has told the STUN server something that is true of no one else,
+and there is nothing to send to. Tailscale and WebRTC, which do the same
+thing with more machinery, fall back to relays in that case too.
+
 ## Why not something else?
 
 **UDP over a reliable stream.** One lost packet would stall everything behind
@@ -333,6 +383,7 @@ semantics for UDP, and TCP-over-TCP for TCP.
 | `tcpforward.{h,cc}` | TCP forwarder: framing and replay protection |
 | `tcpadapter.{h,cc}` | The socket adapter (built-in TCP) |
 | `relay.{h,cc}` | The two relays and the framing between them |
+| `punch.{h,cc}` | Finding a direct path between the relays through NATs |
 | `streamchild.{h,cc}` | The process at each end of a stream |
 | `filecopy.{h,cc}` | `mocp`'s sender and receiver |
 | `../frontend/moshwrapper.{h,cc}` | The `mosh` and `mocp` commands, in `mosh-client` |

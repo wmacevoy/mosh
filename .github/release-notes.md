@@ -4,6 +4,8 @@ This is an unofficial fork of [mosh](https://mosh.org). It has **not** been secu
 
 **Port forwarding needs this build at both ends**: on your machine and on the server.
 
+New in 1.4.0-pf.6: **straight through NATs.** When a session has had to be carried over ssh because the server is behind a NAT, mosh now finds a direct UDP path through the NATs (hole punching) and moves to it, where the NATs allow. It asks public STUN servers where each end appears to be; `--stun` and `--punch` control that.
+
 New in 1.4.0-pf.5: **no more Perl.** The `mosh` and `mocp` commands are now `mosh-client` itself under those names; all they need is `ssh`. The Perl script is still there, as `mosh.pl`.
 
 New in 1.4.0-pf.4: **`mocp`**, which copies files like `scp` but through a mosh session, so a copy survives losing the network and carries on where it left off; `mocp --auto` then keeps a directory up to date. Also `mosh --stdio host -- command`, and forwarded TCP that is about twice as fast on long paths.

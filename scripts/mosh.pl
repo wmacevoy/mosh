@@ -189,6 +189,14 @@ qq{Usage: $0 [options] [--] [user@]host [command...]
                                 reach the server: when needed (default),
                                 from the start and nothing else, or never
 
+        --punch={auto|never}  when the session is being carried over ssh,
+                                look for a way straight to the server by
+                                UDP through the NATs in between, and use
+                                it instead (default: auto)
+        --stun=HOST:PORT[,...]  the servers asked, for that, where each
+                                end appears to be from outside; "none"
+                                to ask nobody (default: two public ones)
+
         --ssh=COMMAND        ssh command to run when setting up session
                                 (example: "ssh -p 2222")
                                 (default: "ssh")
@@ -298,6 +306,8 @@ GetOptions( 'client=s' => \$client,
 	    'stdio' => \$stdio,
 	    'l=s' => \$stdio_user,
 	    'relay=s' => \$relay,
+	    'punch=s' => \my $punch,
+	    'stun=s' => \my $stun,
 	    'no-fragment-parity' => sub { $fragment_parity = 'never' },
 	    'experimental-remote-ip=s' => \$use_remote_ip) or die( $copy ? $copy_usage : $usage );
 
@@ -315,6 +325,12 @@ if ( defined $fragment_parity ) {
     die "$0: Unknown fragment parity mode \"$fragment_parity\".\n\n$usage";
   }
 }
+
+if ( defined $punch ) {
+  die "$0: Unknown punch mode \"$punch\".\n\n$usage" if not grep { $_ eq $punch } qw { auto never };
+  $ENV{ 'MOSH_PUNCH' } = $punch;
+}
+$ENV{ 'MOSH_STUN' } = $stun if defined $stun;
 
 if ( not grep { $_ eq $relay } qw { auto always never } ) {
   die "$0: Unknown relay mode \"$relay\".\n\n$usage";

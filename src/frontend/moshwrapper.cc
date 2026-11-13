@@ -134,6 +134,14 @@ const char USAGE[] = R"USAGE(Usage: %s [options] [--] [user@]host [command...]
                                 reach the server: when needed (default),
                                 from the start and nothing else, or never
 
+        --punch={auto|never}  when the session is being carried over ssh,
+                                look for a way straight to the server by
+                                UDP through the NATs in between, and use
+                                it instead (default: auto)
+        --stun=HOST:PORT[,...]  the servers asked, for that, where each
+                                end appears to be from outside; "none"
+                                to ask nobody (default: two public ones)
+
         --ssh=COMMAND        ssh command to run when setting up session
                                 (example: "ssh -p 2222")
                                 (default: "ssh")
@@ -251,6 +259,8 @@ const Option OPTIONS[] = {
   { "no-fragment-parity", false, false },
   { "N", false, false },
   { "relay", true, false },
+  { "punch", true, false },
+  { "stun", true, false },
   { "copy", false, false },
   { "r", false, false },
   { "auto", false, false },
@@ -797,6 +807,18 @@ bool MoshWrapper::run( const std::vector<std::string>& args,
     const std::string relay = s.value( "relay", "auto" );
     if ( !one_of( relay, "auto always never" ) ) {
       throw Failure( name + ": Unknown relay mode \"" + relay + "\".", true );
+    }
+
+    const std::string punch = s.value( "punch", "auto" );
+    if ( !one_of( punch, "auto never" ) ) {
+      throw Failure( name + ": Unknown punch mode \"" + punch + "\".", true );
+    }
+    /* (the relays read these for themselves: see src/network/relay.cc) */
+    if ( s.has( "punch" ) ) {
+      setenv( "MOSH_PUNCH", punch.c_str(), 1 );
+    }
+    if ( s.has( "stun" ) ) {
+      setenv( "MOSH_STUN", s.value( "stun" ).c_str(), 1 );
     }
 
     std::string predict = s.value( "predict" );

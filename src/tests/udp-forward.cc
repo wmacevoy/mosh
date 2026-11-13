@@ -47,6 +47,7 @@
 #include <unistd.h>
 
 #include "src/network/forwarding.h"
+#include "src/network/punch.h"
 #include "src/network/relay.h"
 #include "src/network/udpforward.h"
 #include "src/util/timestamp.h"
@@ -651,6 +652,85 @@ static void test_relay_frames( void )
   }
 }
 
+/* Finding a way through NATs: the pieces, and two ends finding each other on this machine. */
+static void test_punch( void )
+{
+  /* what a STUN server says: our address, plain and disguised */
+  Addr mapped;
+  const char txid[12] = { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12 };
+  const std::string request = stun_request( txid );
+  CHECK( request.size() == 20 && request.substr( 0, 8 ) == std::string( "\x00\x01\x00\x00\x21\x12\xA4\x42", 8 ) );
+  const std::string header = std::string( "\x01\x01\x00\x0c\x21\x12\xA4\x42", 8 ) + std::string( txid, 12 );
+  /* XOR-MAPPED-ADDRESS for 192.0.2.1:32853 (the example of RFC 5769) */
+  const std::string disguised = header + std::string( "\x00\x20\x00\x08\x00\x01\xa1\x47\xe1\x12\xa6\x43", 12 );
+  CHECK( stun_parse( disguised.data(), disguised.size(), mapped ) && format_ip_port( mapped ) == "192.0.2.1:32853" );
+  const std::string plain = header + std::string( "\x00\x01\x00\x08\x00\x01\x80\x55\xc0\x00\x02\x01", 12 );
+  CHECK( stun_parse( plain.data(), plain.size(), mapped ) && format_ip_port( mapped ) == "192.0.2.1:32853" );
+  CHECK( !stun_parse( request.data(), request.size(), mapped ) ); /* a request is not an answer */
+  CHECK( !stun_parse( disguised.data(), disguised.size() - 1, mapped ) );
+  for ( size_t cut = 0; cut < disguised.size(); cut++ ) {
+    stun_parse( disguised.data(), cut, mapped ); /* (must not read past what it is given) */
+  }
+
+  Addr a;
+  CHECK( parse_ip_port( "10.1.2.3:60001", a ) && format_ip_port( a ) == "10.1.2.3:60001" );
+  CHECK( !parse_ip_port( "10.1.2.3", a ) && !parse_ip_port( "10.1.2.3:0", a ) && !parse_ip_port( "10.1.2.3:70000", a ) );
+  CHECK( !parse_ip_port( "host:22", a ) && !parse_ip_port( "::1:22", a ) && !parse_ip_port( ":22", a ) );
+
+  /* two ends, each knowing only the other's port, and a third who has not the key */
+  const std::string key = Crypto::Base64Key().printable_key();
+  const std::vector<std::string> nobody_to_ask;
+  uint64_t now = 1000000;
+  Punch here( true, key, nobody_to_ask, now ), there( false, key, nobody_to_ask, now );
+  Punch stranger( false, Crypto::Base64Key().printable_key(), nobody_to_ask, now );
+  CHECK( !here.open( now ) && !there.open( now ) && here.where().empty() );
+  here.add_candidate( "127.0.0.1:" + std::to_string( there.local_port() ) );
+  here.add_candidate( "not an address" );
+  stranger.add_candidate( "127.0.0.1:" + std::to_string( there.local_port() ) );
+  stranger.add_candidate( "127.0.0.1:" + std::to_string( here.local_port() ) );
+
+  std::string datagram, got_here, got_there;
+  bool goodbye = false;
+  for ( int round = 0; round < 40; round++ ) {
+    now += 300;
+    here.tick( now );
+    there.tick( now );
+    stranger.tick( now );
+    if ( round == 20 ) {
+      CHECK( here.open( now ) && there.open( now ) );
+      CHECK( here.where() == "127.0.0.1:" + std::to_string( there.local_port() ) );
+      CHECK( there.where() == "127.0.0.1:" + std::to_string( here.local_port() ) ); /* learnt from being found */
+      here.send( "to there" );
+      there.send( "to here" );
+      stranger.send( "from nobody" ); /* (it has found nobody to send to, either) */
+    }
+    if ( round == 30 ) {
+      here.goodbye();
+    }
+    usleep( 2000 );
+    Punch::Got got;
+    while ( ( got = here.receive( now, datagram ) ) != Punch::NOTHING ) {
+      if ( got == Punch::DATA ) {
+        got_here = datagram;
+      }
+    }
+    while ( ( got = there.receive( now, datagram ) ) != Punch::NOTHING ) {
+      if ( got == Punch::DATA ) {
+        got_there = datagram;
+      }
+      goodbye = goodbye || got == Punch::GOODBYE;
+    }
+    while ( stranger.receive( now, datagram ) != Punch::NOTHING ) {}
+  }
+  CHECK( got_here == "to here" && got_there == "to there" );
+  CHECK( goodbye );
+  CHECK( !stranger.open( now ) );
+
+  /* nothing heard for a while: no longer thought open */
+  now += 60000;
+  CHECK( !here.open( now ) );
+}
+
 /* A remote forward (-RU) is a forward with the ends exchanged: the server listens, the client relays. */
 static void test_remote( void )
 {
@@ -785,6 +865,7 @@ int main()
   test_replay();
   test_fragments();
   test_relay_frames();
+  test_punch();
   test_loss_measurement();
   test_relay();
   test_remote();

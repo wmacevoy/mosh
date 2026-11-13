@@ -75,6 +75,8 @@ for which in built-in perl; do
 done
 
 # what only the built-in one has to get right: its own name, and saying no
+"$client" mosh --punch=sometimes localhost >/dev/null 2>&1
+check "an unknown --punch is refused" "$([ $? -eq 1 ] && echo ok)"
 ln -s "$client" "$work/mosh"
 ln -s "$client" "$work/mocp"
 check "under the name mosh it is mosh" "$("$work/mosh" --help | grep -q '^Usage: mosh ' && echo ok)"

@@ -4,7 +4,8 @@
 # Sessions carried by the relay, for when UDP cannot reach the server:
 # from the start; found by the client for itself when UDP gets no
 # answer; with the server's address not what the relay was told; over
-# IPv6; and with the relay's connection lost part way.
+# IPv6; with the relay's connection lost part way; and with the relays
+# finding a way straight to each other and letting ssh go.
 # The remote relay is run directly here, where ssh would run it.
 #
 
@@ -21,7 +22,7 @@ fi
 
 smoke="$(dirname "$0")/headless-smoke.py"
 status=0
-for how in "127.0.0.1 always" "127.0.0.1 blocked" "127.0.0.1 translated"; do
+for how in "127.0.0.1 always" "127.0.0.1 blocked" "127.0.0.1 translated" "127.0.0.1 punched"; do
     printf '%s\n' "--- $how"
     python3 "$smoke" ../frontend/mosh-server ../frontend/mosh-client $how || status=1
 done

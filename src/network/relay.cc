@@ -47,7 +47,12 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
+#include "src/network/punch.h"
 #include "src/network/relay.h"
+
+#include <cstdarg>
+#include <cstdio>
+#include <memory>
 
 using namespace Network;
 
@@ -70,6 +75,93 @@ static const uint64_t RESPAWN_MAX_MS = 30000;
 static const uint64_t RESPAWN_HOPELESS_MAX_MS = 300000;
 /* how much may wait to go down a stream that is not taking it */
 static const size_t STREAM_BACKLOG = 256 * 1024;
+/* how long the remote relay stays, its stream gone, for a way through that has gone quiet */
+static const uint64_t PUNCH_LINGER_MS = 60000;
+/* the servers asked where we appear to be from outside, unless MOSH_STUN says otherwise */
+static const char DEFAULT_STUN[] = "stun.l.google.com:19302,stun.cloudflare.com:3478";
+
+/* What the relays are doing, for whoever sets MOSH_RELAY_LOG to a file to hear of it. */
+static const char* relay_log_who = "";
+static void say( const char* format, ... )
+{
+  const char* path = getenv( "MOSH_RELAY_LOG" );
+  if ( !path || !*path ) {
+    return;
+  }
+  FILE* f = fopen( path, "a" );
+  if ( !f ) {
+    return;
+  }
+  fprintf( f, "%s: ", relay_log_who );
+  va_list args;
+  va_start( args, format );
+  vfprintf( f, format, args );
+  va_end( args );
+  fputc( '\n', f );
+  fclose( f );
+}
+
+/*
+ * Between the relays, on the stream, besides the session's datagrams:
+ * frames that begin with the mark and are words for the other relay.
+ * (No datagram of mosh's begins so.  A relay from before these existed
+ * passes them on as datagrams, to be thrown away for making no sense;
+ * and the local relay says nothing of the kind until the remote one
+ * has, so an old remote relay is never sent any.)
+ *
+ *   HELLO 1          remote: I know about these
+ *   STUN a:p b:p     local: servers to ask where you appear to be
+ *   KEY k            local: seal probes with this; start
+ *   PORT n           either: the port of my end of the way through
+ *   CAND a.b.c.d:p   either: where I may be reached (on my own network, or as seen from outside)
+ */
+static std::string control( const std::string& text )
+{
+  return relay_frame( std::string( PUNCH_MARK, sizeof( PUNCH_MARK ) ) + text );
+}
+
+static bool is_control( const std::string& frame, std::vector<std::string>& words )
+{
+  if ( frame.size() < sizeof( PUNCH_MARK ) || memcmp( frame.data(), PUNCH_MARK, sizeof( PUNCH_MARK ) ) != 0 ) {
+    return false;
+  }
+  words.clear();
+  std::string word;
+  for ( size_t i = sizeof( PUNCH_MARK ); i <= frame.size(); i++ ) {
+    if ( i == frame.size() || frame[i] == ' ' ) {
+      if ( !word.empty() ) {
+        words.push_back( word );
+      }
+      word.clear();
+    } else {
+      word.push_back( frame[i] );
+    }
+  }
+  return true;
+}
+
+static std::vector<std::string> comma_list( const std::string& text )
+{
+  std::vector<std::string> ret;
+  std::string item;
+  for ( size_t i = 0; i <= text.size(); i++ ) {
+    if ( i == text.size() || text[i] == ',' ) {
+      if ( !item.empty() && item != "none" ) {
+        ret.push_back( item );
+      }
+      item.clear();
+    } else {
+      item.push_back( text[i] );
+    }
+  }
+  return ret;
+}
+
+static bool is_ipv4( const std::string& text )
+{
+  Addr addr;
+  return parse_ip_port( text + ":1", addr );
+}
 
 std::string Network::relay_frame( const std::string& datagram )
 {
@@ -93,6 +185,22 @@ bool RelayFrameParser::next( std::string& datagram )
   datagram.assign( pending, 2, len );
   pending.erase( 0, 2 + len );
   return true;
+}
+
+/*
+ * For a process started from the mosh client, which keeps most signals
+ * blocked and takes them when it chooses: a new process should not
+ * inherit that, or a signal sent to stop it waits for ever.
+ */
+static void own_signals( void )
+{
+  sigset_t none;
+  sigemptyset( &none );
+  sigprocmask( SIG_SETMASK, &none, NULL );
+  const int signals[] = { SIGINT, SIGTERM, SIGHUP, SIGCHLD, SIGWINCH, SIGCONT, SIGUSR1, SIGUSR2 };
+  for ( size_t i = 0; i < sizeof( signals ) / sizeof( signals[0] ); i++ ) {
+    signal( signals[i], SIG_DFL );
+  }
 }
 
 static uint64_t now_ms( void )
@@ -184,48 +292,119 @@ int Network::relay_remote( const char* address, const char* port )
     return 1;
   }
 
+  /*
+   * We may be wanted after the connection that started us has gone: if a
+   * way straight through to the other relay is found (punch.h), that
+   * connection is let go, and we are one end of the way through.
+   */
+  setsid();
+  signal( SIGHUP, SIG_IGN );
   signal( SIGPIPE, SIG_IGN );
+  relay_log_who = "remote";
+
+  /* the client's address as ssh saw it: where its relay may be found, for all we know */
+  std::string client_ip;
+  if ( const char* ssh_connection = getenv( "SSH_CONNECTION" ) ) {
+    const std::string c( ssh_connection );
+    client_ip = c.substr( 0, c.find( ' ' ) );
+  }
 
   RelayFrameParser parser;
   char buf[MAX_DATAGRAM + 1];
   std::string datagram;
   std::vector<struct pollfd> fds;
+  std::vector<std::string> words, stun;
+  std::unique_ptr<Punch> punch;
+  bool stream_open = true, was_open = false;
+  uint64_t stream_heard = 0, stream_closed = 0;
+
+  if ( !write_all( STDOUT_FILENO, control( "HELLO 1" ) ) ) {
+    return 0;
+  }
 
   while ( true ) {
     fds.clear();
-    const struct pollfd in = { STDIN_FILENO, POLLIN, 0 };
+    const struct pollfd in = { stream_open ? STDIN_FILENO : -1, POLLIN, 0 };
     fds.push_back( in );
+    const struct pollfd through = { punch ? punch->fd() : -1, POLLIN, 0 };
+    fds.push_back( through );
     for ( size_t i = 0; i < sockets.size(); i++ ) {
       const struct pollfd udp = { sockets[i], POLLIN, 0 };
       fds.push_back( udp );
     }
-    if ( poll( fds.data(), fds.size(), -1 ) < 0 ) {
+    if ( poll( fds.data(), fds.size(), punch ? 250 : -1 ) < 0 ) {
       if ( errno == EINTR ) {
         continue;
       }
       return 1;
     }
+    const uint64_t now = now_ms();
+    bool stream_ended = false;
 
     if ( fds[0].revents ) {
       ssize_t n = read( STDIN_FILENO, buf, sizeof( buf ) );
       if ( n == 0 || ( n < 0 && errno != EINTR && errno != EAGAIN ) ) {
-        return 0; /* the connection that brought us here has gone */
+        stream_ended = true; /* the connection that brought us here has gone */
       }
       if ( n > 0 ) {
         parser.append( buf, n );
         while ( parser.next( datagram ) ) {
-          for ( size_t i = 0; i < sockets.size(); i++ ) {
-            /* if it can't go, it is lost, like any datagram */
-            send( sockets[i], datagram.data(), datagram.size(), MSG_DONTWAIT );
+          if ( !is_control( datagram, words ) ) {
+            stream_heard = now;
+            for ( size_t i = 0; i < sockets.size(); i++ ) {
+              /* if it can't go, it is lost, like any datagram */
+              send( sockets[i], datagram.data(), datagram.size(), MSG_DONTWAIT );
+            }
+          } else if ( words.size() >= 1 && words[0] == "STUN" ) {
+            stun.assign( words.begin() + 1, words.end() );
+          } else if ( words.size() == 2 && words[0] == "KEY" ) {
+            try {
+              punch.reset( new Punch( false, words[1], stun, now ) );
+              stream_ended = stream_ended || !write_all( STDOUT_FILENO, control( "PORT " + std::to_string( punch->local_port() ) ) );
+              say( "looking for a way through, from port %d", static_cast<int>( punch->local_port() ) );
+            } catch ( const std::exception& e ) {
+              punch.reset();
+            }
+          } else if ( words.size() == 2 && words[0] == "PORT" && punch && is_ipv4( client_ip ) ) {
+            punch->add_candidate( client_ip + ":" + words[1] );
+          } else if ( words.size() == 2 && words[0] == "CAND" && punch ) {
+            punch->add_candidate( words[1] );
           }
         }
       }
     }
 
+    if ( punch ) {
+      Punch::Got got;
+      while ( ( got = punch->receive( now, datagram ) ) != Punch::NOTHING ) {
+        if ( got == Punch::GOODBYE ) {
+          say( "the other end has finished" );
+          return 0;
+        }
+        if ( got == Punch::DATA ) {
+          for ( size_t i = 0; i < sockets.size(); i++ ) {
+            send( sockets[i], datagram.data(), datagram.size(), MSG_DONTWAIT );
+          }
+        }
+      }
+      punch->tick( now );
+      const std::vector<std::string> mine = punch->take_local_candidates();
+      for ( size_t i = 0; i < mine.size(); i++ ) {
+        say( "we may be reached at %s", mine[i].c_str() );
+        if ( stream_open && !stream_ended ) {
+          stream_ended = !write_all( STDOUT_FILENO, control( "CAND " + mine[i] ) );
+        }
+      }
+      if ( punch->open( now ) != was_open ) {
+        was_open = punch->open( now );
+        say( was_open ? "a way through is open, to %s" : "the way through to %s has closed", punch->where().c_str() );
+      }
+    }
+
     for ( size_t i = 0; i < sockets.size(); i++ ) {
-      if ( !( fds[1 + i].revents & POLLIN ) ) {
+      if ( !( fds[2 + i].revents & POLLIN ) ) {
         /* (an error on one of them, such as nobody being there, is read off and forgotten) */
-        if ( fds[1 + i].revents ) {
+        if ( fds[2 + i].revents ) {
           recv( sockets[i], buf, sizeof( buf ), MSG_DONTWAIT );
         }
         continue;
@@ -234,8 +413,14 @@ int Network::relay_remote( const char* address, const char* port )
       if ( n < 0 ) {
         continue;
       }
-      if ( !write_all( STDOUT_FILENO, relay_frame( std::string( buf, n ) ) ) ) {
-        return 0;
+      /* From the server, for the client: by the way through if there is one, and by the stream if that is in use. */
+      const std::string answer( buf, n );
+      const bool through_open = punch && punch->open( now );
+      if ( through_open ) {
+        punch->send( answer );
+      }
+      if ( stream_open && !stream_ended && ( !through_open || now - stream_heard < DIRECT_QUIET_MS + 500 ) ) {
+        stream_ended = !write_all( STDOUT_FILENO, relay_frame( answer ) );
       }
       if ( sockets.size() > 1 ) {
         /* The server is at this one.  The others can go. */
@@ -248,6 +433,36 @@ int Network::relay_remote( const char* address, const char* port )
         sockets.assign( 1, found );
         break;
       }
+    }
+
+    if ( stream_ended && stream_open ) {
+      stream_open = false;
+      stream_closed = now;
+      if ( !( punch && punch->open( now ) ) ) {
+        return 0;
+      }
+      /*
+       * Stay, as one end of the way through: but not as the process that
+       * was started, which whoever started it (sshd, say) may be waiting
+       * to see finish.  The stream's descriptors are no more use.
+       */
+      say( "the stream has ended; staying for the way through" );
+      if ( fork() > 0 ) {
+        _exit( 0 );
+      }
+      const int null = open( "/dev/null", O_RDWR );
+      if ( null >= 0 ) {
+        dup2( null, STDIN_FILENO );
+        dup2( null, STDOUT_FILENO );
+        dup2( null, STDERR_FILENO );
+        if ( null > STDERR_FILENO ) {
+          close( null );
+        }
+      }
+    }
+    if ( !stream_open && now - std::max( punch->last_heard(), stream_closed ) > PUNCH_LINGER_MS ) {
+      say( "nothing heard for a minute: finished" );
+      return 0;
     }
   }
 }
@@ -276,6 +491,13 @@ private:
 
   uint64_t direct_heard, direct_hopped, stream_wanted;
 
+  /* a way straight through to the remote relay, when both ends are behind NATs (punch.h) */
+  uint64_t stream_idle;
+  bool punching;
+  std::vector<std::string> stun;
+  std::unique_ptr<Punch> punch;
+  bool was_open;
+
   void open_direct( void )
   {
     if ( direct_fd >= 0 ) {
@@ -289,8 +511,21 @@ private:
     if ( child > 0 ) {
       close( to_child );
       close( from_child );
-      kill( child, SIGTERM );
-      waitpid( child, NULL, 0 );
+      /* With its stream gone it should go of itself; then it is told to; then it is made to. */
+      for ( int tries = 0; tries < 60; tries++ ) {
+        if ( waitpid( child, NULL, WNOHANG ) != 0 ) {
+          child = -1;
+          break;
+        }
+        if ( tries == 20 ) {
+          kill( child, SIGTERM );
+        }
+        usleep( 10000 );
+      }
+      if ( child > 0 ) {
+        kill( child, SIGKILL );
+        waitpid( child, NULL, 0 );
+      }
       child = -1;
       to_child = from_child = -1;
       backlog.clear();
@@ -303,6 +538,10 @@ private:
     if ( child > 0 || now < respawn_after || options.command.empty() ) {
       return;
     }
+    /* (What we had of a way through is no use, or we would not be here.  The new relay will have a new one.) */
+    punch.reset();
+    was_open = false;
+    say( "starting the stream" );
     respawn_after = now + respawn_delay;
     const uint64_t most = ever_worked ? RESPAWN_MAX_MS : RESPAWN_HOPELESS_MAX_MS;
     respawn_delay = respawn_delay * 2 > most ? most : respawn_delay * 2;
@@ -325,6 +564,7 @@ private:
 
     child = fork();
     if ( child == 0 ) {
+      own_signals();
       dup2( in[0], STDIN_FILENO );
       dup2( out[1], STDOUT_FILENO );
       const long limit = sysconf( _SC_OPEN_MAX );
@@ -373,9 +613,13 @@ private:
     if ( direct_fd >= 0 ) {
       sendto( direct_fd, datagram.data(), datagram.size(), MSG_DONTWAIT, &options.server.sa, options.server_len );
     }
+    if ( punch && punch->open( now ) ) {
+      punch->send( datagram );
+    }
 
-    /* Is the direct route answering?  If not, by the other one as well. */
-    if ( options.stream_only || now - direct_heard > DIRECT_QUIET_MS ) {
+    /* Is either route by UDP answering?  If not, by the stream as well. */
+    const uint64_t udp_heard = std::max( direct_heard, punch ? punch->last_heard() : 0 );
+    if ( options.stream_only || now - udp_heard > DIRECT_QUIET_MS ) {
       stream_wanted = now;
       start_child( now );
       if ( to_child >= 0 && backlog.size() + datagram.size() <= STREAM_BACKLOG ) {
@@ -389,6 +633,59 @@ private:
     }
   }
 
+  /* Words from the remote relay (see control(), above). */
+  void from_remote( const std::vector<std::string>& words, uint64_t now )
+  {
+    if ( words.size() == 2 && words[0] == "HELLO" && punching && !punch ) {
+      /* It knows how to look for a way through.  So: a key for the two of us, and where to ask. */
+      try {
+        const std::string key = Crypto::Base64Key().printable_key();
+        punch.reset( new Punch( true, key, stun, now ) );
+        std::string servers;
+        for ( size_t i = 0; i < stun.size(); i++ ) {
+          servers += " " + stun[i];
+        }
+        backlog += control( "STUN" + servers ) + control( "KEY " + key )
+                   + control( "PORT " + std::to_string( punch->local_port() ) );
+        say( "looking for a way through, from port %d", static_cast<int>( punch->local_port() ) );
+      } catch ( const std::exception& e ) {
+        punch.reset();
+      }
+    } else if ( words.size() == 2 && words[0] == "PORT" && punch && options.server.sa.sa_family == AF_INET ) {
+      /* at the server's own address, if nothing in between changes the port */
+      const std::string server = format_ip_port( options.server );
+      punch->add_candidate( server.substr( 0, server.rfind( ':' ) ) + ":" + words[1] );
+    } else if ( words.size() == 2 && words[0] == "CAND" && punch ) {
+      punch->add_candidate( words[1] );
+    }
+  }
+
+  void tend_punch( uint64_t now )
+  {
+    if ( !punch ) {
+      return;
+    }
+    std::string datagram;
+    Punch::Got got;
+    while ( ( got = punch->receive( now, datagram ) ) != Punch::NOTHING ) {
+      if ( got == Punch::DATA ) {
+        to_client( datagram.data(), datagram.size() );
+      }
+    }
+    punch->tick( now );
+    const std::vector<std::string> mine = punch->take_local_candidates();
+    for ( size_t i = 0; i < mine.size(); i++ ) {
+      say( "we may be reached at %s", mine[i].c_str() );
+      if ( to_child >= 0 ) {
+        backlog += control( "CAND " + mine[i] );
+      }
+    }
+    if ( punch->open( now ) != was_open ) {
+      was_open = punch->open( now );
+      say( was_open ? "a way through is open, to %s" : "the way through to %s has closed", punch->where().c_str() );
+    }
+  }
+
   /* unused */
   LocalRelay( const LocalRelay& );
   LocalRelay& operator=( const LocalRelay& );
@@ -397,9 +694,21 @@ public:
   LocalRelay( const RelayOptions& s_options, int s_client_fd, int s_alive_fd )
     : options( s_options ), client_fd( s_client_fd ), direct_fd( -1 ), alive_fd( s_alive_fd ), client(),
       client_len( 0 ), child( -1 ), to_child( -1 ), from_child( -1 ), backlog(), parser(), respawn_after( 0 ),
-      respawn_delay( RESPAWN_MIN_MS ), ever_worked( false ), direct_heard( 0 ), direct_hopped( 0 ), stream_wanted( 0 )
+      respawn_delay( RESPAWN_MIN_MS ), ever_worked( false ), direct_heard( 0 ), direct_hopped( 0 ), stream_wanted( 0 ),
+      stream_idle( STREAM_IDLE_MS ), punching( false ), stun(), punch(), was_open( false )
   {
     open_direct();
+    /* (for tests, which cannot wait a minute to see the stream let go) */
+    if ( const char* idle = getenv( "MOSH_RELAY_STREAM_IDLE_MS" ) ) {
+      if ( atol( idle ) >= 1000 ) {
+        stream_idle = atol( idle );
+      }
+    }
+    /* Look for a way through unless told not to; and not when told to use the stream and nothing else. */
+    const char* wanted = getenv( "MOSH_PUNCH" );
+    punching = !options.stream_only && !( wanted && strcmp( wanted, "never" ) == 0 );
+    const char* servers = getenv( "MOSH_STUN" );
+    stun = comma_list( servers ? servers : DEFAULT_STUN );
   }
 
   void run( void )
@@ -409,19 +718,26 @@ public:
 
     while ( true ) {
       /* (poll ignores a negative descriptor, so the absent ones need no special care) */
-      struct pollfd fds[5] = { { alive_fd, POLLIN, 0 },
+      struct pollfd fds[6] = { { alive_fd, POLLIN, 0 },
                                { client_fd, POLLIN, 0 },
                                { direct_fd, POLLIN, 0 },
                                { from_child, POLLIN, 0 },
-                               { backlog.empty() ? -1 : to_child, POLLOUT, 0 } };
-      if ( poll( fds, 5, 1000 ) < 0 && errno != EINTR ) {
+                               { backlog.empty() ? -1 : to_child, POLLOUT, 0 },
+                               { punch ? punch->fd() : -1, POLLIN, 0 } };
+      if ( poll( fds, 6, punch ? 250 : 1000 ) < 0 && errno != EINTR ) {
         break;
       }
       const uint64_t now = now_ms();
 
       if ( fds[0].revents ) {
-        break; /* the client has gone, and so should we */
+        /* the client has gone, and so should we: and the far end of the way through, without waiting to wonder */
+        if ( punch ) {
+          punch->goodbye();
+        }
+        break;
       }
+
+      tend_punch( now );
 
       if ( fds[1].revents & POLLIN ) {
         Addr from;
@@ -448,10 +764,16 @@ public:
           respawn_delay = RESPAWN_MIN_MS; /* it works */
           ever_worked = true;
           parser.append( buf, n );
+          std::vector<std::string> words;
           while ( parser.next( datagram ) ) {
-            to_client( datagram.data(), datagram.size() );
+            if ( is_control( datagram, words ) ) {
+              from_remote( words, now );
+            } else {
+              to_client( datagram.data(), datagram.size() );
+            }
           }
         } else if ( n == 0 || ( errno != EINTR && errno != EAGAIN ) ) {
+          say( "the stream has ended" );
           stop_child();
         }
       }
@@ -459,7 +781,8 @@ public:
       flush();
 
       /* The direct route has been enough for a while: let the other one go. */
-      if ( child > 0 && !options.stream_only && now - stream_wanted > STREAM_IDLE_MS ) {
+      if ( child > 0 && !options.stream_only && now - stream_wanted > stream_idle ) {
+        say( "the stream has not been needed for a while: closing it" );
         stop_child();
         respawn_after = 0;
       }
@@ -505,6 +828,7 @@ int Network::relay_start_local( const RelayOptions& options, int& keep_alive_fd,
      * goodbye to send through them), and it has no business with the
      * terminal or anything else the client has open.
      */
+    own_signals();
     setsid();
     signal( SIGPIPE, SIG_IGN );
     const int null = open( "/dev/null", O_RDWR );
@@ -519,6 +843,7 @@ int Network::relay_start_local( const RelayOptions& options, int& keep_alive_fd,
         close( fd );
       }
     }
+    relay_log_who = "local";
     LocalRelay relay( options, client_fd, alive[0] );
     relay.run();
     _exit( 0 );

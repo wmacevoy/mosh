@@ -338,6 +338,24 @@ killed, or the command on the server ends; if no \fIcommand\fP is
 given, one that simply waits is run there.
 
 .TP
+.B \-\-punch=\fIWHEN\fP
+Experimental.  \fBauto\fP (the default) or \fBnever\fP.  When the
+session is being carried over ssh (see \fB\-\-relay\fP) because the
+server is behind a NAT, look for a way straight to it by UDP through the
+NATs in between, by having both ends send to each other at once, and
+use it instead; the ssh connection is then closed, and opened again if
+the way through stops working.  Not every NAT can be got through; where
+one cannot, the session stays on ssh.  IPv4 only.
+
+.TP
+.B \-\-stun=\fIHOST:PORT\fP[,...]
+The servers that \fB\-\-punch\fP asks where each end appears to be from
+outside (STUN, RFC 8489).  The default is two public ones,
+stun.l.google.com:19302 and stun.cloudflare.com:3478, which thereby
+learn the addresses of both ends, and are asked only when a session has
+had to fall back to ssh.  \fBnone\fP asks nobody.
+
+.TP
 .B \-\-stdio
 Experimental.  Do not use the terminal: run \fIcommand\fP on the server
 with its standard input and output here, as \fBssh\fP \fIhost command\fP

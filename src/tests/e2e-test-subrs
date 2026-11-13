@@ -1,5 +1,10 @@
 #!/bin/sh
 
+# (Not from a test: a session that has to be carried over ssh asks servers
+# on the Internet where it appears to be, unless told to ask nobody.)
+MOSH_STUN=none
+export MOSH_STUN
+
 #
 # This is a library of subroutines mostly intended for test scripts.
 #

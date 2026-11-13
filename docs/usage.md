@@ -330,6 +330,49 @@ What to know about it:
 - **Both ends need this build.** An older `mosh-server` has no `relay`, and
   the fallback then does nothing.
 
+### Straight through NATs
+
+Going through ssh works, but it is the lesser thing: everything takes the
+long way round, in a stream. Often the reason UDP could not reach the server
+is that the server is behind a NAT (a home router, say) and can only be
+reached by ssh through somewhere else. Then, from 1.4.0-pf.6, mosh looks for a
+way straight to it all the same.
+
+While the session is being carried over ssh, the two ends each find out what
+address they appear to have from outside, tell each other over the ssh
+connection, and both send to the other at once. To each NAT that looks like
+an answer to something its own side sent, and it lets it in. If that works
+the session moves to the direct path by UDP, and a minute later the ssh
+connection is closed. If the path stops working (you changed networks), mosh
+goes back through ssh for a few seconds and finds another.
+
+You need do nothing. What to know:
+
+- **It does not always work.** Some NATs (many mobile networks, some
+  campuses) give a different outside address for each destination, and
+  nothing can be found through those. The session then simply stays on ssh.
+- **Two machines on one network** find each other by their addresses on that
+  network, without going out through the router and back.
+- **It asks a server on the Internet** where each end appears to be: by
+  default two public STUN servers, `stun.l.google.com:19302` and
+  `stun.cloudflare.com:3478`. Each gets one small datagram from each end, and
+  so learns those ends' addresses and nothing else. Only when a session has
+  had to fall back to ssh; never otherwise. `--stun=HOST:PORT` names another
+  (your own, say), and `--stun=none` asks nobody, which still works where the
+  NATs keep port numbers as they are and each end knows the other's address.
+- `--punch=never` turns it off. `--relay=always` and `--relay=never` have no
+  use for it either.
+- IPv4 only, which is where the NATs are.
+
+A machine with a public address that you can ssh through (the smallest cloud
+instance will do) is enough to reach a machine behind a NAT this way: the
+hidden machine keeps an ssh connection out to it with a reverse tunnel, you
+ssh through it with `ProxyJump`, and `mosh --experimental-remote-ip=remote`
+does the rest. After the first few seconds the traffic goes directly and the
+machine in the middle carries nothing. (That arrangement has been tested here
+with real NATs but with something standing in for the ssh part; see
+[Status and limits](status.md).)
+
 With `-N`, mosh says on standard error which way it went:
 `mosh: no answer by UDP; trying through ssh as well.` or, with
 `--relay=always`, `mosh: connecting through ssh.`
@@ -349,6 +392,7 @@ in the same order:
 | `--fragment-parity=mode` | `-F mode` |
 | `-N` | `-N` (client only; the server is given a command that waits) |
 | `--relay=when` | `MOSH_RELAY=when` and `MOSH_RELAY_COMMAND` in `mosh-client`'s environment (below) |
+| `--punch=when`, `--stun=list` | `MOSH_PUNCH=when` and `MOSH_STUN=list` in `mosh-client`'s environment. `MOSH_RELAY_LOG=file` has both relays write down what they do, where they can (the remote one only if it is set on the server too) |
 | `--stdio`, `--copy` | `-X words` at each end, saying what the process at that end of the stream is (see `mosh-server(1)`) |
 
 `MOSH_RELAY_COMMAND` is the command that reaches a relay on the server, as

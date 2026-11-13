@@ -82,6 +82,37 @@ jobs:
           grep -q ':test-result: \(PASS\|SKIP\|XFAIL\)' "$t" || { echo "=== ${t%.trs}"; tail -n 100 "${t%.trs}.log"; }
         done
 
+  # Hole punching against real address translation: two NATs (Linux's),
+  # a client behind one and a server behind the other, in network
+  # namespaces.  See src/tests/nat-lab.py.
+  nat:
+    runs-on: ubuntu-24.04
+
+    steps:
+    - uses: actions/checkout@v2
+
+    - name: "setup"
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y g++ make autoconf automake pkg-config protobuf-compiler libprotobuf-dev \
+          libutempter-dev zlib1g-dev libncurses5-dev libssl-dev nftables iproute2 iputils-ping python3
+
+    - name: "build"
+      run: |
+        ./autogen.sh
+        ./configure
+        make -j4
+
+    - name: "a session across two NATs"
+      run: |
+        status=0
+        for kind in easy hard moved room; do
+          echo "::group::$kind"
+          sudo unshare -m -n python3 src/tests/nat-lab.py "$PWD/src/frontend" "$(command -v nft)" $kind || status=1
+          echo "::endgroup::"
+        done
+        exit $status
+
   # A short run of each fuzzer on every change: long enough to catch a
   # regression in what they already reach, not a substitute for running
   # them for hours.
@@ -110,7 +141,7 @@ jobs:
       run: |
         cd src/fuzz
         status=0
-        for fuzzer in forward_frame_fuzzer tcpinudp_fuzzer udp_forward_fuzzer tcp_adapter_fuzzer file_copy_fuzzer terminal_parser_fuzzer terminal_fuzzer; do
+        for fuzzer in forward_frame_fuzzer tcpinudp_fuzzer udp_forward_fuzzer tcp_adapter_fuzzer file_copy_fuzzer punch_fuzzer terminal_parser_fuzzer terminal_fuzzer; do
           echo "::group::$fuzzer"
           corpus="${fuzzer%_fuzzer}_corpus"
           mkdir -p "work/$fuzzer" "crashes/$fuzzer"
@@ -212,6 +243,7 @@ jobs:
         python src\tests\headless-smoke.py dist\mosh-msys2\mosh-server.exe dist\mosh-msys2\mosh-client.exe 127.0.0.1 always
         python src\tests\headless-smoke.py dist\mosh-msys2\mosh-server.exe dist\mosh-msys2\mosh-client.exe 127.0.0.1 blocked
         python src\tests\headless-smoke.py dist\mosh-msys2\mosh-server.exe dist\mosh-msys2\mosh-client.exe 127.0.0.1 translated
+        python src\tests\headless-smoke.py dist\mosh-msys2\mosh-server.exe dist\mosh-msys2\mosh-client.exe 127.0.0.1 punched
 
     - uses: actions/upload-artifact@v4
       with:

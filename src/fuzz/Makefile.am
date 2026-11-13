@@ -2,7 +2,7 @@ AM_CXXFLAGS = $(WARNING_CXXFLAGS) $(PICKY_CXXFLAGS) $(HARDEN_CFLAGS) $(MISC_CXXF
 
 if ENABLE_FUZZING
   noinst_PROGRAMS = terminal_parser_fuzzer terminal_fuzzer \
-    forward_frame_fuzzer tcpinudp_fuzzer udp_forward_fuzzer tcp_adapter_fuzzer file_copy_fuzzer
+    forward_frame_fuzzer tcpinudp_fuzzer udp_forward_fuzzer tcp_adapter_fuzzer file_copy_fuzzer punch_fuzzer
 endif
 
 terminal_parser_fuzzer_CPPFLAGS = -I$(top_srcdir)/
@@ -35,3 +35,7 @@ tcp_adapter_fuzzer_SOURCES = tcp_adapter_fuzzer.cc forward_fuzz.h
 file_copy_fuzzer_CPPFLAGS = -I$(top_srcdir)/ -I$(top_builddir)/
 file_copy_fuzzer_LDADD = $(FORWARD_LDADD)
 file_copy_fuzzer_SOURCES = file_copy_fuzzer.cc
+
+punch_fuzzer_CPPFLAGS = -I$(top_srcdir)/ -I$(top_builddir)/
+punch_fuzzer_LDADD = $(FORWARD_LDADD)
+punch_fuzzer_SOURCES = punch_fuzzer.cc

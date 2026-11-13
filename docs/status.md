@@ -27,7 +27,8 @@ failures and 2 skips, as before, plus the new unit tests).
 | `file-copy` | `mocp`'s sender and receiver joined directly: single files and trees, the destination as a name and as a directory, patterns, a copy carried on from a part file (and not from one that is the wrong file), unchanged files skipped, `--delete`, name clashes, and `--auto` following changes, additions and removals |
 | `mocp.test` | The `mocp` and `mosh --stdio` commands with a real `mosh-server` and `mosh-client` (the server being this machine, without ssh): copies in both directions, by pattern, repeated, a missing source reported from the other end, and `--auto --delete` keeping a directory in step |
 | `wrapper.test` | The `mosh` command itself, which every session starts with: the one built into `mosh-client` and the Perl script it replaced, put through the same things with a stand-in for ssh that "logs in" to this machine. A terminal session with the server's address found each of the three ways (the default one being through an ssh `ProxyCommand`, which the stand-in really runs and passes bytes through), `--stdio`, `mocp` each way, and a copy with the session carried over ssh (`--relay=always`). Needs `python3` and `perl` |
-| `relay.test` | Sessions carried by the relay: from the start; found by the client when UDP gets no answer; with the relay told an address that is not the server's own; over IPv6; with the relay killed part way, after which the session carries on through a new one; and that no relay outlives its client. The remote relay is run directly, where ssh would run it. Needs `python3` |
+| `nat-lab.py` | (Not in `make check`: it needs to be root in a network namespace. CI runs it.) The four NAT scenarios in the table below, with real address translation |
+| `relay.test` | Sessions carried by the relay: from the start; found by the client when UDP gets no answer; with the relay told an address that is not the server's own; over IPv6; with the relay killed part way, after which the session carries on through a new one; with the two relays finding a direct path to each other, asking a STUN server (the test's own), and letting the stream go; and that no relay outlives its client. The remote relay is run directly, where ssh would run it. Needs `python3` |
 | `forward-e2e.test` | A real `mosh-server` and `mosh-client` with one forward of each kind (`-L`, `-R`, `-LU`, `-RU`): TCP both ways with an orderly close, and UDP datagrams sent whole and in fragments. Needs `python3`; skipped without it |
 | `tcp-forward` | Six simulated hours out of contact without losing a connection; and real TCP connections through a pair of socket adapters, clean and with 5% of datagrams lost, with a small MTU, a refusing target, a peer that does not support forwarding, and local and remote forwards sharing one session |
 
@@ -42,6 +43,10 @@ failures and 2 skips, as before, plus the new unit tests).
 | UDP, 3000-byte datagrams, 5% loss | Request/reply pairs complete 76% of the time without parity, 97.5% with it, 95.5% in `auto` |
 | UDP, 5000-byte datagrams, 1% loss | 89.6% without parity, 99.0% in `auto` |
 | UDP cut off in the middle of a session (`--relay=auto`) | Carries on through the relay about 12 seconds later; goes back to UDP when it returns, and closes the relay a minute after |
+| A session between a client behind one NAT and a server behind another (Linux's own NAT, in network namespaces, with a firewall that lets nothing in unasked), told only an address it cannot reach | Comes up through the relay; each end learns its outside address from a STUN server; a direct path opens through both NATs; the stream is closed and 300 KB goes by UDP alone |
+| The same, with the server's NAT giving a random port to each destination | No path is found, and the session goes on through the relay |
+| The same, and then the client's NAT changes its outside address | The session is back in 3 seconds through the relay, a new direct path is found from the new address, and the stream is closed again |
+| Client and server behind the same NAT | They find each other by their own addresses, not through the NAT's outside one |
 | `mocp` of 12 MB with the path cut for 25 seconds part way | Nothing arrives while it is cut; the copy finishes 7 seconds after, identical |
 | `mocp` killed part way, then run again | The 3.7 MB that had arrived is kept, and the second run sends the rest; identical |
 | `mocp` to a server with an older build | Says at once that the server's mosh is too old |
@@ -90,6 +95,11 @@ independent review.
 - IPv6 forwarding targets and IPv6 mosh sessions.
 - The `mosh` wrapper over a real ssh connection (only that it passes the
   options to both ends).
+- Hole punching through any NAT but Linux's, or over the Internet, or with
+  the public STUN servers it uses by default (the tests use one of their own
+  and are forbidden the real ones). Home routers are mostly Linux and mostly
+  behave as the tested one does; what a phone's network or a campus does is
+  another matter.
 - The built-in `mosh` command with a real ssh. It is tested against a
   stand-in that takes ssh's arguments and does what ssh would, on Linux and
   macOS, and in the MSYS2 shell on Windows. With Windows's own `ssh.exe` it
@@ -143,6 +153,13 @@ with password-only login there is no fallback. Mosh cannot tell that from a
 network that is merely away, so while it hears nothing from the server it
 tries ssh again: a few times in the first minutes, then every five. Those
 show in the server's log as failed logins; `--relay=never` stops them.
+
+**Hole punching is IPv4 only, and does not get through every NAT.** Where it
+does not, the session stays on ssh. It asks third parties (public STUN
+servers, by default) where each end appears to be, which tells them those
+addresses; `--stun` changes whom, and `--stun=none` or `--punch=never` asks
+nobody. The remote relay stays running for up to a minute after a direct path
+was last used.
 
 **The local relay listens on a loopback UDP port.** Another user of your
 machine can send to it. They cannot read or forge the session, which is
