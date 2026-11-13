@@ -25,6 +25,9 @@ of through ssh:
   translated  as always, but the relay is told an address for the server
             that is not this machine's, as when addresses are translated
             on the way, and has to find the server for itself
+  returned  as blocked; and then UDP works again, and the session is to go
+            back to it by itself and let the stream go; and then UDP stops
+            again, and the stream is to be brought back
 """
 
 import os
@@ -110,7 +113,13 @@ if relay:
         told = "192.0.2.1"  # (an address set aside for examples: nobody's)
         client_env["SSH_CONNECTION"] = "192.0.2.2 50000 %s 22" % address  # as ssh would describe its arrival
     client_env["MOSH_RELAY_COMMAND"] = "\x1f".join([server_path, "relay", told, match.group(1)])
-    client_env["MOSH_RELAY"] = "auto" if relay in ("blocked", "punched") else "always"
+    client_env["MOSH_RELAY"] = "auto" if relay in ("blocked", "punched", "returned") else "always"
+    if relay in ("punched", "returned"):
+        handle, relay_log = tempfile.mkstemp(prefix="mosh-relay-log-")
+        os.close(handle)
+        client_env["MOSH_RELAY_LOG"] = relay_log
+        # (the stream is let go after a minute unused: three seconds, for this test)
+        client_env["MOSH_RELAY_STREAM_IDLE_MS"] = "3000"
     if relay == "punched":
         # A STUN server of our own: it answers a request with where the request came from.
         stun = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -129,10 +138,41 @@ if relay:
 
         threading.Thread(target=answer, daemon=True).start()
         client_env["MOSH_STUN"] = "127.0.0.1:%d" % stun.getsockname()[1]
-        handle, relay_log = tempfile.mkstemp(prefix="mosh-relay-log-")
-        os.close(handle)
-        client_env["MOSH_RELAY_LOG"] = relay_log
-        client_env["MOSH_RELAY_STREAM_IDLE_MS"] = "3000"
+    if relay == "returned":
+        # Between the client and the server, a gate that this test shuts and opens:
+        # UDP that does not get there, and then does.  It begins shut.
+        gate_open = [False]
+        relay_at = [None]
+        gate = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        gate.bind(("127.0.0.1", 0))
+        onward = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        onward.bind(("127.0.0.1", 0))
+        server_at = ("127.0.0.1", int(match.group(1)))
+
+        def inward():
+            while True:
+                try:
+                    datagram, relay_at[0] = gate.recvfrom(65536)
+                    if gate_open[0]:
+                        onward.sendto(datagram, server_at)
+                except OSError:
+                    pass
+
+        def outward():
+            while True:
+                try:
+                    datagram, _ = onward.recvfrom(65536)
+                    if gate_open[0] and relay_at[0]:
+                        gate.sendto(datagram, relay_at[0])
+                except OSError:
+                    pass
+
+        threading.Thread(target=inward, daemon=True).start()
+        threading.Thread(target=outward, daemon=True).start()
+        client_port = str(gate.getsockname()[1])
+        # (on one machine the relays would find a way straight to each other, and the stream
+        # would be let go for that reason and not for this one)
+        client_env["MOSH_PUNCH"] = "never"
     if relay in ("blocked", "punched"):
         nobody = socket.socket(socket.AF_INET6 if ":" in address else socket.AF_INET, socket.SOCK_DGRAM)
         nobody.bind((address, 0))
@@ -208,7 +248,31 @@ if relay == "punched":
     check("the session carries on by the way through alone", ok and log.count("starting the stream") == 1,
           "" if ok and log.count("starting the stream") == 1 else log)
 
-if relay and relay != "punched" and not windows:
+if relay == "returned":
+    check("it is the stream that carries it", logged().count("starting the stream") == 1)
+    gate_open[0] = True
+    closing = "the stream has not been needed for a while: closing it"
+    deadline = time.time() + 20
+    while time.time() < deadline and closing not in logged():
+        through_the_forward(b"keeping busy")
+        time.sleep(0.3)
+    check("UDP works again, and the stream is let go", closing in logged(), "" if closing in logged() else logged())
+    ok = all(through_the_forward(b"without the stream %d" % i) for i in range(5))
+    time.sleep(4)
+    ok = ok and through_the_forward(b"and still")
+    log = logged()
+    check("the session carries on by UDP alone", ok and log.count("starting the stream") == 1,
+          "" if ok and log.count("starting the stream") == 1 else log)
+    gate_open[0] = False
+    deadline = time.time() + 30
+    ok = False
+    while time.time() < deadline and not (ok and logged().count("starting the stream") == 2):
+        ok = through_the_forward(b"by the stream again")
+    log = logged()
+    check("UDP stops again, and the stream is brought back", ok and log.count("starting the stream") == 2,
+          "" if ok and log.count("starting the stream") == 2 else log)
+
+if relay and relay not in ("punched", "returned") and not windows:
     # The connection the relay rides on is lost (here, the remote relay is killed).
     # The session does not depend on it: another is made, and it carries on.
     relays = subprocess.run(["pgrep", "-f", "%s relay %s %s" % (server_path, told, match.group(1))],
@@ -265,12 +329,13 @@ def copy(to_server):
     return done.returncode == 0 and same, "" if done.returncode == 0 and same else "(exit %d) %s" % (done.returncode, done.stderr[-300:])
 
 
-if relay_log:
+if relay == "punched":
     # the far relay is told when the client goes, and goes too, without waiting to wonder
     deadline = time.time() + 10
     while time.time() < deadline and "the other end has finished" not in logged():
         time.sleep(0.2)
     check("the far relay is told the client has gone", "the other end has finished" in logged())
+if relay_log:
     os.remove(relay_log)
 
 if not relay:
