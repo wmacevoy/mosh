@@ -156,7 +156,13 @@ Connection::Socket::Socket( int family ) : _fd( socket( family, SOCK_DGRAM, 0 ) 
   /* Disable path MTU discovery */
 #ifdef HAVE_IP_MTU_DISCOVER
   int flag = IP_PMTUDISC_DONT;
-  if ( setsockopt( _fd, IPPROTO_IP, IP_MTU_DISCOVER, &flag, sizeof flag ) < 0 ) {
+  if ( setsockopt( _fd, IPPROTO_IP, IP_MTU_DISCOVER, &flag, sizeof flag ) < 0 && family == AF_INET ) {
+    /*
+     * This is an IPv4 option.  Linux takes it on an IPv6 socket as well,
+     * but not every system does (Cygwin and MSYS2 say EINVAL), and an
+     * IPv6 socket can do without it: we never send a datagram larger
+     * than every IPv6 path must carry.
+     */
     throw NetworkException( "setsockopt", errno );
   }
 #endif
