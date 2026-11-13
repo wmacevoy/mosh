@@ -41,6 +41,7 @@
 #include "src/network/streamchild.h"
 #include "src/util/fatal_assert.h"
 #include "src/util/locale_utils.h"
+#include "moshwrapper.h"
 #include "stmclient.h"
 
 /* These need to be included last because of conflicting defines. */
@@ -107,8 +108,55 @@ static void print_colorcount( void )
   printf( "%d\n", color_val );
 }
 
+/*
+ * Run as "mosh" or "mocp", or with one of those as the first word, this
+ * program first does what the mosh command does (logs in by ssh and
+ * starts the server: moshwrapper.h), and then carries on below as the
+ * client of the session that made, with the arguments that gives it.
+ */
+static std::vector<std::string> wrapped_arguments;
+static std::vector<char*> wrapped_argv;
+
 int main( int argc, char* argv[] )
 {
+  if ( argc > 0 ) {
+    std::string name( argv[0] );
+    const size_t slash = name.find_last_of( "/\\" );
+    if ( slash != std::string::npos ) {
+      name.erase( 0, slash + 1 );
+    }
+    if ( name.size() > 4 && name.compare( name.size() - 4, 4, ".exe" ) == 0 ) {
+      name.erase( name.size() - 4 );
+    }
+    if ( argc == 5 && strcmp( argv[1], "--mosh-fake-proxy" ) == 0 ) {
+      return MoshWrapper::fake_proxy( argv[2], argv[3], argv[4] );
+    }
+    int first = 1;
+    if ( name != "mosh" && name != "mocp" && argc > 1
+         && ( strcmp( argv[1], "mosh" ) == 0 || strcmp( argv[1], "mocp" ) == 0 ) ) {
+      name = argv[1];
+      first = 2;
+    }
+    if ( name == "mosh" || name == "mocp" ) {
+      int status = 1;
+      if ( !MoshWrapper::run( std::vector<std::string>( argv + first, argv + argc ),
+                              name == "mocp",
+                              name,
+                              argv[0],
+                              print_colorcount,
+                              wrapped_arguments,
+                              status ) ) {
+        return status;
+      }
+      for ( size_t i = 0; i < wrapped_arguments.size(); i++ ) {
+        wrapped_argv.push_back( const_cast<char*>( wrapped_arguments[i].c_str() ) );
+      }
+      wrapped_argv.push_back( NULL );
+      argc = wrapped_arguments.size();
+      argv = wrapped_argv.data();
+    }
+  }
+
   unsigned int verbose = 0;
   std::vector<std::string> udp_forwards, udp_remote_forwards, tcp_forwards, tcp_remote_forwards;
   std::string fragment_parity = "auto";

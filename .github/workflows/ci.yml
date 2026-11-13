@@ -180,12 +180,15 @@ jobs:
     - name: "test"
       run: |
         export MSYSTEM=CYGWIN
-        make -C src/tests V=1 check TESTS="ocb-aes encrypt-decrypt base64 nonce-incr udp-forward tcp-in-udp tcp-forward file-copy" || { cat src/tests/test-suite.log; exit 1; }
+        make -C src/tests V=1 check TESTS="ocb-aes encrypt-decrypt base64 nonce-incr udp-forward tcp-in-udp tcp-forward file-copy wrapper.test mocp.test" || { cat src/tests/test-suite.log; exit 1; }
 
     - name: "collect the client and the libraries it needs"
       run: |
         mkdir -p dist/mosh-msys2
-        cp src/frontend/mosh-client.exe src/frontend/mosh-server.exe scripts/mosh scripts/mocp dist/mosh-msys2/
+        cp src/frontend/mosh-client.exe src/frontend/mosh-server.exe dist/mosh-msys2/
+        cp src/frontend/mosh-client.exe dist/mosh-msys2/mosh.exe
+        cp src/frontend/mosh-client.exe dist/mosh-msys2/mocp.exe
+        cp scripts/mosh dist/mosh-msys2/mosh.pl
         ldd src/frontend/mosh-client.exe src/frontend/mosh-server.exe | awk '$3 ~ /^\/usr\/bin\// { print $3 }' | sort -u | xargs -I{} cp {} dist/mosh-msys2/
         ls -l dist/mosh-msys2
 
@@ -193,7 +196,10 @@ jobs:
     # (Inside the MSYS2 shell, a second copy of its runtime DLL can't be used.)
     - name: "check that the collected client runs on its own"
       shell: pwsh
-      run: .\dist\mosh-msys2\mosh-client.exe --version
+      run: |
+        .\dist\mosh-msys2\mosh-client.exe --version
+        .\dist\mosh-msys2\mosh.exe --version
+        .\dist\mosh-msys2\mocp.exe --help
 
     # The server too: a whole session, with nothing of MSYS2's but the
     # libraries collected beside the programs.

@@ -85,8 +85,14 @@ tar -xzf "$tmp/$name.tar.gz" -C "$tmp"
     || fail "the downloaded mosh-client does not run on this system; build from source: https://wmacevoy.github.io/mosh/usage.html"
 
 mkdir -p "$prefix/bin" "$prefix/share/man/man1"
-for f in mosh mocp mosh-client mosh-server; do
-    [ -f "$tmp/$name/bin/$f" ] || continue # (mocp came with 1.4.0-pf.4)
+for f in mosh-client mosh-server mosh mocp mosh.pl; do
+    [ -f "$tmp/$name/bin/$f" ] || continue # (mocp came with 1.4.0-pf.4, mosh.pl with pf.5)
+    if [ -L "$tmp/$name/bin/$f" ]; then
+        # From 1.4.0-pf.5 the mosh and mocp commands are mosh-client under those names.
+        ln -sf mosh-client "$prefix/bin/.$f.new"
+        mv -f "$prefix/bin/.$f.new" "$prefix/bin/$f"
+        continue
+    fi
     # install over a running copy safely: replace the file, don't write into it
     cp "$tmp/$name/bin/$f" "$prefix/bin/.$f.new"
     chmod 755 "$prefix/bin/.$f.new"
@@ -105,4 +111,7 @@ case ":$PATH:" in
         say "(As a server it needs nothing more: this mosh looks for mosh-server in ~/.local/bin.)"
         ;;
 esac
-command -v perl >/dev/null 2>&1 || say "Note: the mosh command needs perl, which was not found.  (mosh-server does not.)"
+if [ ! -L "$prefix/bin/mosh" ]; then
+    # (before 1.4.0-pf.5 the mosh command was a Perl script)
+    command -v perl >/dev/null 2>&1 || say "Note: the mosh command needs perl, which was not found.  (mosh-server does not.)"
+fi

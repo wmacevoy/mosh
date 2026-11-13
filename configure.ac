@@ -2,7 +2,7 @@
 # Process this file with autoconf to produce a configure script.
 
 AC_PREREQ([2.61])
-AC_INIT([mosh], [1.4.0-pf.4], [https://github.com/wmacevoy/mosh/issues])
+AC_INIT([mosh], [1.4.0-pf.5], [https://github.com/wmacevoy/mosh/issues])
 AM_INIT_AUTOMAKE([foreign std-options -Wall -Werror -Wno-portability])
 m4_ifdef([AM_SILENT_RULES], [AM_SILENT_RULES([yes])])
 AC_CONFIG_SRCDIR([src/frontend/mosh-client.cc])
@@ -15,6 +15,7 @@ AX_CODE_COVERAGE
 AC_PROG_CC([cc gcc clang])
 AC_PROG_CXX([c++ g++ clang++])
 AC_PROG_RANLIB
+AC_PROG_LN_S
 AC_PATH_PROG([PROTOC], [protoc], [])
 AS_IF([test x"$PROTOC" = x],
   [AC_MSG_ERROR([cannot find protoc, the Protocol Buffers compiler])])

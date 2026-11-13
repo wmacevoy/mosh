@@ -285,6 +285,26 @@ mosh's round-trip estimates and its frame-rate control are working from
 worse information, and forwarded TCP is TCP over TCP. That is why it is a
 fallback and not a mode to prefer.
 
+## The `mosh` command
+
+Mosh has always been three programs: `mosh-server`, `mosh-client`, and a Perl
+script, `mosh`, that logs in with ssh, starts the server, reads the port and
+key it prints, and runs the client. The script made Perl a requirement
+wherever mosh was to be used, which matters little on Linux and macOS and a
+good deal on Windows.
+
+From 1.4.0-pf.5 the client does that itself. Run under the name `mosh` or
+`mocp` (which is how they are installed: links to `mosh-client`, or copies of
+it on Windows), or as `mosh-client mosh ...`, it does what the script did and
+then carries on, in the same process, as the client of the session it has
+made. The options are the script's and so is what it tells ssh, including the
+way it learns which address ssh reached: it has ssh run it again as its
+`ProxyCommand`, where it connects to the server itself, says which address
+that was, and carries ssh's bytes.
+
+The script is kept (`scripts/mosh.pl`, installed as `mosh.pl`) and the two are
+tested side by side on the same tasks.
+
 ## Why not something else?
 
 **UDP over a reliable stream.** One lost packet would stall everything behind
@@ -315,6 +335,7 @@ semantics for UDP, and TCP-over-TCP for TCP.
 | `relay.{h,cc}` | The two relays and the framing between them |
 | `streamchild.{h,cc}` | The process at each end of a stream |
 | `filecopy.{h,cc}` | `mocp`'s sender and receiver |
+| `../frontend/moshwrapper.{h,cc}` | The `mosh` and `mocp` commands, in `mosh-client` |
 | `forwarding.h` | Everything above behind one event-loop interface for the two programs |
 | `network.{h,cc}` | Loss measurement (added to the existing connection) |
 | `networktransport*.h`, `transportsender*.h` | Side-channel hooks and the two new optional message fields |

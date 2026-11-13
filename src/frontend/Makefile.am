@@ -15,5 +15,15 @@ if BUILD_SERVER
   bin_PROGRAMS += mosh-server
 endif
 
-mosh_client_SOURCES = mosh-client.cc stmclient.cc stmclient.h terminaloverlay.cc terminaloverlay.h
+# "mosh" and "mocp" are this program under other names: see moshwrapper.h.
+if BUILD_CLIENT
+install-exec-hook:
+	cd "$(DESTDIR)$(bindir)" && rm -f mosh$(EXEEXT) mocp$(EXEEXT) \
+	  && $(LN_S) mosh-client$(EXEEXT) mosh$(EXEEXT) && $(LN_S) mosh-client$(EXEEXT) mocp$(EXEEXT)
+
+uninstall-hook:
+	rm -f "$(DESTDIR)$(bindir)/mosh$(EXEEXT)" "$(DESTDIR)$(bindir)/mocp$(EXEEXT)"
+endif
+
+mosh_client_SOURCES = mosh-client.cc moshwrapper.cc moshwrapper.h stmclient.cc stmclient.h terminaloverlay.cc terminaloverlay.h
 mosh_server_SOURCES = mosh-server.cc

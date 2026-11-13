@@ -1,0 +1,89 @@
+#!/bin/sh
+
+#
+# The mosh command: both the one built into mosh-client and the Perl
+# script it takes over from, given the same things to do and the same
+# stand-in for ssh (fake-ssh.py, which "logs in" to this machine).
+# That is the part of mosh every session starts with and no other test
+# runs: the ssh command line, learning the server's address each of the
+# three ways, the server's reply, and becoming the client.
+#
+
+if ! command -v python3 >/dev/null 2>&1 || ! command -v perl >/dev/null 2>&1; then
+    printf "wrapper.test: needs python3 and perl\n" >&2
+    exit 77
+fi
+
+. "$(dirname "$0")/e2e-test-subrs"
+if ! set_locale; then
+    printf "wrapper.test: no usable locale\n" >&2
+    exit 77
+fi
+
+here=$(pwd)
+client="$here/../frontend/mosh-client"
+server="$here/../frontend/mosh-server"
+ssh="python3 $(cd "$(dirname "$0")" && pwd)/fake-ssh.py"
+
+work=$(mktemp -d 2>/dev/null || mktemp -d -t wrapper-test)
+trap 'rm -rf "$work"' EXIT
+FAKE_SSH_LOG="$work/ssh.log"
+export FAKE_SSH_LOG
+printf 'a file\n' > "$work/file"
+
+status=0
+check() {
+    if [ "$2" = ok ]; then
+        printf '%-64s ok\n' "$1"
+    else
+        printf '%-64s FAIL\n' "$1"
+        status=1
+    fi
+}
+
+for which in built-in perl; do
+    if [ $which = perl ]; then
+        mosh="perl $here/../../scripts/mosh --client=$client"
+        mocp="perl $here/../../scripts/mocp --client=$client"
+    else
+        mosh="$client mosh"
+        mocp="$client mocp"
+    fi
+
+    for how in proxy remote local; do
+        said=$(TERM=xterm ./inpty $mosh --ssh="$ssh" --server="$server" --experimental-remote-ip=$how \
+            localhost -- printf 'he%s\n' llo 2>&1)
+        check "$which: a terminal session, the address found by \"$how\"" \
+            "$(printf '%s\n' "$said" | grep -q hello && echo ok)"
+        [ $status = 0 ] || printf '%s\n' "$said" | tail -5
+    done
+
+    said=$(printf 'through\n' | $mosh --ssh="$ssh" --server="$server" --stdio localhost tr a-z A-Z 2>&1)
+    check "$which: --stdio, as a program would use it in place of ssh" "$([ "$said" = THROUGH ] && echo ok)"
+
+    rm -f "$work/there" "$work/back"
+    $mocp -q --ssh="$ssh" --server="$server" "$work/file" "localhost:$work/there" \
+        && $mocp -q --ssh="$ssh" --server="$server" "localhost:$work/there" "$work/back"
+    check "$which: mocp, there and back" "$(cmp -s "$work/file" "$work/back" && echo ok)"
+
+    # with no UDP at all: the relay is reached by ssh too
+    : > "$FAKE_SSH_LOG"
+    rm -f "$work/relayed"
+    $mocp -q --relay=always --ssh="$ssh" --server="$server" "$work/file" "localhost:$work/relayed"
+    check "$which: mocp with the session carried by ssh (--relay=always)" \
+        "$(cmp -s "$work/file" "$work/relayed" && grep -q "BatchMode=yes.* relay " "$FAKE_SSH_LOG" && echo ok)"
+done
+
+# what only the built-in one has to get right: its own name, and saying no
+ln -s "$client" "$work/mosh"
+ln -s "$client" "$work/mocp"
+check "under the name mosh it is mosh" "$("$work/mosh" --help | grep -q '^Usage: mosh ' && echo ok)"
+check "under the name mocp it is mocp" "$("$work/mocp" --help | grep -q '^Usage: mocp ' && echo ok)"
+"$work/mosh" --no-such-option localhost >/dev/null 2>&1
+check "an option it does not know is refused" "$([ $? -eq 1 ] && echo ok)"
+"$work/mocp" "$work/file" "$work/elsewhere" >/dev/null 2>&1
+check "a copy with no other machine in it is refused" "$([ $? -eq 1 ] && [ ! -e "$work/elsewhere" ] && echo ok)"
+"$work/mosh" --ssh="$ssh" --server=/nonexistent/mosh-server localhost >/dev/null 2>&1
+check "no server at the other end is an error, not a hang" "$([ $? -eq 1 ] && echo ok)"
+
+exit $status

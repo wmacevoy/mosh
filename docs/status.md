@@ -15,7 +15,7 @@ narrow, and forwarding widens it considerably.
 Everything below was run on Linux over the loopback interface, with the real
 `mosh-client` and `mosh-server` unless noted.
 
-**Mosh's own test suite** passes with these changes (34 pass, 2 expected
+**Mosh's own test suite** passes with these changes (35 pass, 2 expected
 failures and 2 skips, as before, plus the new unit tests).
 
 **New tests** (`make check` runs them):
@@ -25,7 +25,8 @@ failures and 2 skips, as before, plus the new unit tests).
 | `udp-forward` | Specification parsing, the frame format, the replay window, fragmentation and parity (every single-fragment loss across a range of sizes), reassembly timeout, the automatic parity decision, loss measurement, and a relay through two forwarders |
 | `tcp-in-udp` | The header transformation in both directions, with checksums checked against independently computed values for IPv4 and IPv6 |
 | `file-copy` | `mocp`'s sender and receiver joined directly: single files and trees, the destination as a name and as a directory, patterns, a copy carried on from a part file (and not from one that is the wrong file), unchanged files skipped, `--delete`, name clashes, and `--auto` following changes, additions and removals |
-| `mocp.test` | The `mocp` and `mosh --stdio` commands with a real `mosh-server` and `mosh-client` (the server being this machine, without ssh): copies in both directions, by pattern, repeated, a missing source reported from the other end, and `--auto --delete` keeping a directory in step. Needs `perl` |
+| `mocp.test` | The `mocp` and `mosh --stdio` commands with a real `mosh-server` and `mosh-client` (the server being this machine, without ssh): copies in both directions, by pattern, repeated, a missing source reported from the other end, and `--auto --delete` keeping a directory in step |
+| `wrapper.test` | The `mosh` command itself, which every session starts with: the one built into `mosh-client` and the Perl script it replaced, put through the same things with a stand-in for ssh that "logs in" to this machine. A terminal session with the server's address found each of the three ways (the default one being through an ssh `ProxyCommand`, which the stand-in really runs and passes bytes through), `--stdio`, `mocp` each way, and a copy with the session carried over ssh (`--relay=always`). Needs `python3` and `perl` |
 | `relay.test` | Sessions carried by the relay: from the start; found by the client when UDP gets no answer; with the relay told an address that is not the server's own; over IPv6; with the relay killed part way, after which the session carries on through a new one; and that no relay outlives its client. The remote relay is run directly, where ssh would run it. Needs `python3` |
 | `forward-e2e.test` | A real `mosh-server` and `mosh-client` with one forward of each kind (`-L`, `-R`, `-LU`, `-RU`): TCP both ways with an orderly close, and UDP datagrams sent whole and in fragments. Needs `python3`; skipped without it |
 | `tcp-forward` | Six simulated hours out of contact without losing a connection; and real TCP connections through a pair of socket adapters, clean and with 5% of datagrams lost, with a small MTU, a refusing target, a peer that does not support forwarding, and local and remote forwards sharing one session |
@@ -89,6 +90,10 @@ independent review.
 - IPv6 forwarding targets and IPv6 mosh sessions.
 - The `mosh` wrapper over a real ssh connection (only that it passes the
   options to both ends).
+- The built-in `mosh` command with a real ssh. It is tested against a
+  stand-in that takes ssh's arguments and does what ssh would, on Linux and
+  macOS, and in the MSYS2 shell on Windows. With Windows's own `ssh.exe` it
+  has only been checked that `mosh.exe` and `mocp.exe` start.
 - `mocp` over a real ssh login, or between two machines. On Windows, the
   copying itself is tested (`file-copy`) and one file each way between the
   packaged programs on one machine; the `mocp` command there is not.

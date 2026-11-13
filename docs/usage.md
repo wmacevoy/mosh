@@ -19,12 +19,15 @@ curl -fsSL https://raw.githubusercontent.com/wmacevoy/mosh/master/scripts/instal
 ```
 
 It downloads the newest [release](https://github.com/wmacevoy/mosh/releases),
-checks it against the published checksums, and installs `mosh`,
+checks it against the published checksums, and installs `mosh`, `mocp`,
 `mosh-client` and `mosh-server`. The programs need nothing that does not
 come with the operating system (on macOS, no Homebrew).
 
 - On your own machine, put `~/.local/bin` on your `PATH` if it isn't (the
-  installer says so). `mosh` itself needs `perl` and `ssh`.
+  installer says so). `mosh` needs `ssh`, which is how a session is started,
+  and nothing else. (Before 1.4.0-pf.5 it was a Perl script and needed Perl;
+  it is now `mosh-client` itself under another name. The script is still
+  installed, as `mosh.pl`.)
 - On a server, nothing more: this `mosh` looks for `mosh-server` in
   `~/.local/bin` on the server before anywhere else, so it finds the one you
   installed even if the system has an older mosh.
@@ -32,9 +35,11 @@ come with the operating system (on macOS, no Homebrew).
   release.
 
 **Windows.** Download the `msys2` zip from the release page and unpack it. It
-holds `mosh-client.exe`, `mosh-server.exe` and the MSYS2 libraries they need.
-The `mosh` wrapper beside them is a Perl script that runs `ssh`, so it needs
-both of those, for instance from an MSYS2 installation.
+holds `mosh.exe`, `mocp.exe`, `mosh-client.exe`, `mosh-server.exe` and the
+MSYS2 libraries they need. `mosh` and `mocp` need `ssh`, which Windows 10 and
+later have (`ssh.exe`), and from 1.4.0-pf.5 nothing else: no Perl, and no
+MSYS2 installation. That has been checked only as far as the programs
+starting on Windows; see [Status and limits](status.md).
 
 A Windows machine can be the server too (from release 1.4.0-pf.2): start
 `mosh-server.exe` there, for instance over Windows's own OpenSSH server.
@@ -69,11 +74,12 @@ make
 sudo make install        # or run from the build tree, see below
 ```
 
-To try it without installing, point the wrapper at the binaries you built.
-`--server` is a path on the server; `--client` is a path on your machine:
+To try it without installing, run the client you built as `mosh` (it is
+`mosh` when its first word says so) and tell it where the server you built
+is. `--server` is a path on the server:
 
 ```
-perl scripts/mosh --client=$PWD/src/frontend/mosh-client \
+src/frontend/mosh-client mosh \
      --server=/path/on/server/mosh/src/frontend/mosh-server \
      -L 8080:localhost:80 user@server
 ```
