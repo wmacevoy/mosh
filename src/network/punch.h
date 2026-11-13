@@ -79,9 +79,37 @@ namespace Network {
 
 /* The mark that begins a probe, and a control message between relays (relay.h). */
 extern const char PUNCH_MARK[8];
+/* The mark that begins a datagram to be passed on, or that has been (see stun_serve). */
+extern const char FORWARD_MARK[8];
+static const size_t FORWARD_HEADER = 8 + 12 + 16; /* the mark; proof of the key; which pair of ends */
 
 /* A STUN request for our outside address: txid is 12 bytes of anything. */
 std::string stun_request( const char* txid );
+/*
+ * Twelve bytes for a request that show the asker holds a key, for a
+ * server that answers only those who do (stun_serve, below): four at
+ * random, and eight that only the key gives for those four.  To a
+ * server that knows nothing of this they are twelve bytes like any
+ * others.  key: as Crypto::Base64Key prints it.
+ */
+std::string stun_keyed_txid( const std::string& key );
+bool stun_txid_has_key( const char* txid, const std::string& key );
+/*
+ * A STUN server, of the plainest kind: it says where a request came
+ * from.  With a key it answers only requests that show the key; and in
+ * any case no more than a few hundred a second, so as to be no use to
+ * anyone for anything else.  Runs until killed; returns an exit status
+ * if it cannot start.  ("mosh-server stun PORT")
+ *
+ * With a key it does one thing more, for two ends that can find no way
+ * to each other: it passes datagrams between them.  Each sends it
+ *     FORWARD_MARK, twelve bytes showing the key, sixteen naming the pair, the datagram
+ * and it sends the same on to whichever other address has lately sent
+ * it datagrams naming that pair.  So the two still talk by UDP, though
+ * by way of here.  It reads nothing of what it passes (which is sealed
+ * by its ends), and passes nothing for anyone without the key.
+ */
+int stun_serve( const char* port, const std::string& key );
 /* If this is an answer to one that says where we were seen: true, and where. */
 bool stun_parse( const char* data, size_t len, Addr& mapped );
 
@@ -115,11 +143,17 @@ private:
   std::vector<Addr> candidates;       /* where the other end might be */
   std::vector<std::string> local_new; /* where we appear to be, not yet told to the other end */
   std::vector<std::string> local_all;
-  Addr peer; /* where it was last heard to be */
+  Addr peer;     /* where it was last heard to be... */
+  bool peer_via; /* ...or the server that passes datagrams on to it, if that is how it was heard */
   bool locked;
-  uint64_t heard, started, last_probe;
+  uint64_t heard, started, last_probe, last_direct_probe;
 
-  void probe( char type, const Addr& to );
+  /* servers that will pass datagrams on, for those with the key: learnt by their answering as STUN servers */
+  std::string forward_proof, forward_pair;
+  std::vector<Addr> forwarders;
+
+  void transmit( const std::string& packet, const Addr& to, bool via );
+  void probe( char type, const Addr& to, bool via );
 
   /* unused */
   Punch( const Punch& );
@@ -129,10 +163,15 @@ public:
   /*
    * key: as Crypto::Base64Key prints it.  The end that made it up is the
    * initiator.  stun_servers: "host:port", asked (from another process,
-   * so as not to wait on name lookups) where we appear to be.
+   * so as not to wait on name lookups) where we appear to be; stun_key:
+   * if they want one (see stun_keyed_txid).
    * Throws NetworkException if there is no socket to be had.
    */
-  Punch( bool s_initiator, const std::string& key, const std::vector<std::string>& stun_servers, uint64_t now );
+  Punch( bool s_initiator,
+         const std::string& key,
+         const std::vector<std::string>& stun_servers,
+         uint64_t now,
+         const std::string& stun_key = "" );
   ~Punch();
 
   int fd( void ) const { return sock; }
@@ -149,7 +188,12 @@ public:
   /* Whether there is, as far as we know, a way through just now. */
   bool open( uint64_t now ) const { return locked && now - heard < OPEN_FOR; }
   uint64_t last_heard( void ) const { return locked ? heard : 0; }
-  std::string where( void ) const { return locked ? format_ip_port( peer ) : std::string(); }
+  /* Where the other end is; or "by way of" where, if datagrams are being passed on to it. */
+  std::string where( void ) const
+  {
+    return locked ? ( peer_via ? "by way of " : "" ) + format_ip_port( peer ) : std::string();
+  }
+  bool direct( void ) const { return locked && !peer_via; }
 
   void send( const std::string& datagram );
   void goodbye( void );

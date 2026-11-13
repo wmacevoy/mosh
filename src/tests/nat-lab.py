@@ -13,9 +13,10 @@ CI runs it each way (the "nat" job).
                                              +-- "the Internet" 203.0.113.1 (a STUN server)
    server 192.168.2.2 -- natB 203.0.113.12 --+
 
-usage: natlab.py BINDIR NFT [easy|hard|moved|room]
+usage: nat-lab.py BINDIR NFT [easy|hard|passed|moved|room]
   easy   both NATs keep the port number (as most home routers do)
   hard   the server's NAT picks a new port for every destination: no way through; the stream has to do
+  passed hard, but with a key for the Internet's server, which then passes the session on by UDP
   moved  easy, and then the client's NAT changes its outside address
   room   the server is behind the client's own NAT (192.168.3.2): two machines in one room
 
@@ -53,7 +54,7 @@ for name, outside, lan in (("A", "203.0.113.11", "192.168.1"), ("B", "203.0.113.
     sh("ip -n %s addr add %s.2/24 dev eth0 && ip -n %s link set eth0 up && ip -n %s link set lo up" % (host, lan, host, host))
     sh("ip -n %s route add default via %s.1" % (host, lan))
     sh("ip netns exec %s sh -c 'echo 1 > /proc/sys/net/ipv4/ip_forward'" % nat)
-    how = "masquerade random,fully-random" if (kind == "hard" and name == "B") else "masquerade"
+    how = "masquerade random,fully-random" if (kind in ("hard", "passed") and name == "B") else "masquerade"
     sh("ip netns exec %s %s add table ip nat" % (nat, nft))
     sh("ip netns exec %s %s 'add chain ip nat post { type nat hook postrouting priority 100 ; }'" % (nat, nft))
     sh("ip netns exec %s %s add rule ip nat post oifname eth0 %s" % (nat, nft, how))
@@ -83,16 +84,12 @@ print("the lab: each side reaches the Internet and not the other".ljust(66), "ok
 if not ok:
     sys.exit(1)
 
-# the Internet's STUN server
-stun = socket.socket(socket.AF_INET, socket.SOCK_DGRAM); stun.bind(("203.0.113.1", 3478))
-def answer():
-    while True:
-        request, where = stun.recvfrom(2048)
-        if len(request) >= 20 and request[:2] == b"\x00\x01":
-            port = struct.pack("!H", where[1] ^ 0x2112)
-            ip = bytes(a ^ b for a, b in zip(socket.inet_aton(where[0]), b"\x21\x12\xa4\x42"))
-            stun.sendto(b"\x01\x01\x00\x0c" + request[4:20] + b"\x00\x20\x00\x08\x00\x01" + port + ip, where)
-threading.Thread(target=answer, daemon=True).start()
+# the Internet's STUN server: "mosh-server stun", which with a key answers only those who have it,
+# and for them will also pass datagrams on
+stun_key = subprocess.run([bindir + "/mosh-server", "stun-key"], capture_output=True, text=True).stdout.strip()
+keyed = kind in ("passed", "room")
+stun = subprocess.Popen([bindir + "/mosh-server", "stun", "3478"], env=dict(os.environ, **({"MOSH_STUN_KEY": stun_key} if keyed else {})))
+time.sleep(0.3)
 
 work = tempfile.mkdtemp(prefix="natlab-")
 log = work + "/relay.log"; open(log, "w").close()
@@ -107,6 +104,7 @@ port, key = re.search(r"MOSH CONNECT (\d+) (\S+)", out).groups()
 # The client is told an address it cannot reach (as when ssh came by a jump host), so it turns to the relay:
 # which here is started in the server's namespace directly, where ssh would start it.
 cenv = dict(env, MOSH_KEY=key, MOSH_RELAY="auto", MOSH_STUN="203.0.113.1:3478", MOSH_RELAY_STREAM_IDLE_MS="4000",
+            **({"MOSH_STUN_KEY": stun_key} if keyed else {}),
             MOSH_RELAY_COMMAND="\x1f".join(["ip", "netns", "exec", where, bindir + "/mosh-server", "relay", server_ip, port]))
 client = subprocess.Popen(["ip", "netns", "exec", "client", bindir + "/mosh-client", "-N", "-L", "8888:127.0.0.1:7777", "198.51.100.9", port],
                           env=cenv, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
@@ -133,7 +131,23 @@ try:
     told = wait(lambda: "local: we may be reached at 203.0.113.11:" in logged() and ("remote: we may be reached at %s:" % there) in logged(), 10)
     check("each end learns its outside address from the STUN server", told, logged())
 
-    if kind == "hard":
+    if kind == "passed":
+        check("a way is found by UDP, by way of the server with the key", wait(lambda: logged().count("a way through is open, to by way of 203.0.113.1:3478") >= 2, 15), logged())
+        wait(lambda: (works(), "staying for the way through" in logged())[1], 25)
+        check("the stream is let go; the far relay stays", "staying for the way through" in logged(), logged())
+        starts = logged().count("starting the stream")
+        good = all(works() for i in range(5)) and works(300000)
+        time.sleep(5)
+        check("the session works by UDP alone, passed on by the server", good and works() and logged().count("starting the stream") == starts, logged())
+        # and nobody without the key is answered at all
+        asker = socket.socket(socket.AF_INET, socket.SOCK_DGRAM); asker.settimeout(1.5)
+        asker.sendto(b"\x00\x01\x00\x00\x21\x12\xa4\x42" + os.urandom(12), ("203.0.113.1", 3478))
+        try:
+            asker.recvfrom(100); silent = False
+        except socket.timeout:
+            silent = True
+        check("the server says nothing to someone without the key", silent)
+    elif kind == "hard":
         time.sleep(12)
         check("no way through is found (the server's NAT gives it away to nobody)", "a way through is open" not in logged(), logged())
         check("and the session goes on working, by the stream", all(works() for i in range(3)) and works(200000))
@@ -167,6 +181,7 @@ try:
     check("the far relay is told when the client goes", kind == "hard" or wait(lambda: "the other end has finished" in logged(), 8), logged())
 finally:
     target.kill()
+    stun.kill()
     if client.poll() is None:
         client.kill()
     stop_ours()

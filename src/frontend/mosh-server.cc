@@ -95,6 +95,7 @@
 
 #include "src/network/networktransport-impl.h"
 #include "src/network/forwarding.h"
+#include "src/network/punch.h"
 #include "src/network/streamchild.h"
 #include "src/network/relay.h"
 
@@ -213,6 +214,14 @@ int main( int argc, char* argv[] )
    * client's datagrams, arriving over ssh, to a server that is already
    * running here, for when they cannot get here by UDP.  See relay.h.
    */
+  /* A STUN server, for finding ways through NATs (src/network/punch.h), and a key for a private one. */
+  if ( argc == 3 && strcmp( argv[1], "stun" ) == 0 ) {
+    return Network::stun_serve( argv[2], getenv( "MOSH_STUN_KEY" ) ? getenv( "MOSH_STUN_KEY" ) : "" );
+  }
+  if ( argc == 2 && strcmp( argv[1], "stun-key" ) == 0 ) {
+    printf( "%s\n", Crypto::Base64Key().printable_key().c_str() );
+    return 0;
+  }
   if ( argc == 4 && strcmp( argv[1], "relay" ) == 0 ) {
     return Network::relay_remote( argv[2], argv[3] );
   }

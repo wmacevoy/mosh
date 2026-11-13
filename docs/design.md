@@ -355,6 +355,19 @@ destination has told the STUN server something that is true of no one else,
 and there is nothing to send to. Tailscale and WebRTC, which do the same
 thing with more machinery, fall back to relays in that case too.
 
+So does this, if it is given one: `mosh-server stun` with a key (what TURN is
+to STUN). Each end can always send UDP out to a machine with a public
+address, so each sends its datagrams there with a short header (a mark, proof
+of the key, and sixteen bytes naming the pair of ends, which both can work
+out from the key they share and no one else can) and the server sends them on
+to whichever other address has lately named that pair. To the code that
+looks for a path, "by way of the server" is one more place the other end can
+be found, tried along with the rest and taken only while there is no path
+straight there; while it is in use, the direct candidates are still tried
+every two seconds. The proof of the key is twelve bytes that look like any
+STUN transaction id, four random and eight that only the key gives for those
+four, so the same request serves a public server and a private one.
+
 ## Why not something else?
 
 **UDP over a reliable stream.** One lost packet would stall everything behind

@@ -111,6 +111,7 @@ static void say( const char* format, ... )
  *
  *   HELLO 1          remote: I know about these
  *   STUN a:p b:p     local: servers to ask where you appear to be
+ *   STUNKEY k        local: ...and the key to show them, if they want one
  *   KEY k            local: seal probes with this; start
  *   PORT n           either: the port of my end of the way through
  *   CAND a.b.c.d:p   either: where I may be reached (on my own network, or as seen from outside)
@@ -314,6 +315,7 @@ int Network::relay_remote( const char* address, const char* port )
   std::string datagram;
   std::vector<struct pollfd> fds;
   std::vector<std::string> words, stun;
+  std::string stun_key;
   std::unique_ptr<Punch> punch;
   bool stream_open = true, was_open = false;
   uint64_t stream_heard = 0, stream_closed = 0;
@@ -357,9 +359,11 @@ int Network::relay_remote( const char* address, const char* port )
             }
           } else if ( words.size() >= 1 && words[0] == "STUN" ) {
             stun.assign( words.begin() + 1, words.end() );
+          } else if ( words.size() == 2 && words[0] == "STUNKEY" ) {
+            stun_key = words[1];
           } else if ( words.size() == 2 && words[0] == "KEY" ) {
             try {
-              punch.reset( new Punch( false, words[1], stun, now ) );
+              punch.reset( new Punch( false, words[1], stun, now, stun_key ) );
               stream_ended = stream_ended || !write_all( STDOUT_FILENO, control( "PORT " + std::to_string( punch->local_port() ) ) );
               say( "looking for a way through, from port %d", static_cast<int>( punch->local_port() ) );
             } catch ( const std::exception& e ) {
@@ -495,6 +499,7 @@ private:
   uint64_t stream_idle;
   bool punching;
   std::vector<std::string> stun;
+  std::string stun_key; /* for STUN servers that answer only those who have it */
   std::unique_ptr<Punch> punch;
   bool was_open;
 
@@ -640,12 +645,13 @@ private:
       /* It knows how to look for a way through.  So: a key for the two of us, and where to ask. */
       try {
         const std::string key = Crypto::Base64Key().printable_key();
-        punch.reset( new Punch( true, key, stun, now ) );
+        punch.reset( new Punch( true, key, stun, now, stun_key ) );
         std::string servers;
         for ( size_t i = 0; i < stun.size(); i++ ) {
           servers += " " + stun[i];
         }
-        backlog += control( "STUN" + servers ) + control( "KEY " + key )
+        backlog += control( "STUN" + servers ) + ( stun_key.empty() ? "" : control( "STUNKEY " + stun_key ) )
+                   + control( "KEY " + key )
                    + control( "PORT " + std::to_string( punch->local_port() ) );
         say( "looking for a way through, from port %d", static_cast<int>( punch->local_port() ) );
       } catch ( const std::exception& e ) {
@@ -695,7 +701,7 @@ public:
     : options( s_options ), client_fd( s_client_fd ), direct_fd( -1 ), alive_fd( s_alive_fd ), client(),
       client_len( 0 ), child( -1 ), to_child( -1 ), from_child( -1 ), backlog(), parser(), respawn_after( 0 ),
       respawn_delay( RESPAWN_MIN_MS ), ever_worked( false ), direct_heard( 0 ), direct_hopped( 0 ), stream_wanted( 0 ),
-      stream_idle( STREAM_IDLE_MS ), punching( false ), stun(), punch(), was_open( false )
+      stream_idle( STREAM_IDLE_MS ), punching( false ), stun(), stun_key(), punch(), was_open( false )
   {
     open_direct();
     /* (for tests, which cannot wait a minute to see the stream let go) */
@@ -709,6 +715,9 @@ public:
     punching = !options.stream_only && !( wanted && strcmp( wanted, "never" ) == 0 );
     const char* servers = getenv( "MOSH_STUN" );
     stun = comma_list( servers ? servers : DEFAULT_STUN );
+    if ( const char* key = getenv( "MOSH_STUN_KEY" ) ) {
+      stun_key = key;
+    }
   }
 
   void run( void )

@@ -677,6 +677,13 @@ static void test_punch( void )
   CHECK( !parse_ip_port( "10.1.2.3", a ) && !parse_ip_port( "10.1.2.3:0", a ) && !parse_ip_port( "10.1.2.3:70000", a ) );
   CHECK( !parse_ip_port( "host:22", a ) && !parse_ip_port( "::1:22", a ) && !parse_ip_port( ":22", a ) );
 
+  /* a request that shows a key: to those who have the key, and to no one else */
+  const std::string stun_key = Crypto::Base64Key().printable_key(), other_key = Crypto::Base64Key().printable_key();
+  const std::string keyed = stun_keyed_txid( stun_key );
+  CHECK( keyed.size() == 12 && stun_txid_has_key( keyed.data(), stun_key ) );
+  CHECK( !stun_txid_has_key( keyed.data(), other_key ) && !stun_txid_has_key( txid, stun_key ) );
+  CHECK( stun_keyed_txid( stun_key ) != keyed ); /* (a new one each time) */
+
   /* two ends, each knowing only the other's port, and a third who has not the key */
   const std::string key = Crypto::Base64Key().printable_key();
   const std::vector<std::string> nobody_to_ask;

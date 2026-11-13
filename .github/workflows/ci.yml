@@ -106,7 +106,7 @@ jobs:
     - name: "a session across two NATs"
       run: |
         status=0
-        for kind in easy hard moved room; do
+        for kind in easy hard passed moved room; do
           echo "::group::$kind"
           sudo unshare -m -n python3 src/tests/nat-lab.py "$PWD/src/frontend" "$(command -v nft)" $kind || status=1
           echo "::endgroup::"

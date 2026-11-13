@@ -364,6 +364,38 @@ You need do nothing. What to know:
   use for it either.
 - IPv4 only, which is where the NATs are.
 
+#### A server of your own
+
+Any machine with a public address and one UDP port open can be the STUN
+server, and, for you alone, something better than that:
+
+```
+mosh-server stun-key                                 # prints a key; keep it
+MOSH_STUN_KEY=that-key mosh-server stun 60000        # on the machine with the public address
+```
+
+and on the machine you use mosh from (in your shell's profile, say):
+
+```
+export MOSH_STUN=the.public.machine:60000
+export MOSH_STUN_KEY=that-key
+```
+
+Without a key, `mosh-server stun PORT` is an ordinary STUN server that tells
+anyone who asks where they appear to be. With one:
+
+- it answers **only** requests that show the key, and is silent to everyone
+  else, so it is yours and nobody else's;
+- it will also **pass the session's datagrams on** between your two ends when
+  no direct path can be found between them. That is still UDP, with mosh
+  behaving as mosh does, where the alternative was the stream through ssh.
+  Whenever a direct path can be found, that is used instead and the server
+  carries nothing.
+
+What it passes on is sealed by mosh between its two ends; the server cannot
+read it. It keeps running until it is killed (start it from `cron` with
+`@reboot`, or a service manager), and uses next to nothing while idle.
+
 A machine with a public address that you can ssh through (the smallest cloud
 instance will do) is enough to reach a machine behind a NAT this way: the
 hidden machine keeps an ssh connection out to it with a reverse tunnel, you
@@ -392,7 +424,7 @@ in the same order:
 | `--fragment-parity=mode` | `-F mode` |
 | `-N` | `-N` (client only; the server is given a command that waits) |
 | `--relay=when` | `MOSH_RELAY=when` and `MOSH_RELAY_COMMAND` in `mosh-client`'s environment (below) |
-| `--punch=when`, `--stun=list` | `MOSH_PUNCH=when` and `MOSH_STUN=list` in `mosh-client`'s environment. `MOSH_RELAY_LOG=file` has both relays write down what they do, where they can (the remote one only if it is set on the server too) |
+| `--punch=when`, `--stun=list` | `MOSH_PUNCH=when` and `MOSH_STUN=list` in `mosh-client`'s environment; `MOSH_STUN_KEY` is the key for a STUN server of your own (never an option, so that it is not shown to everyone who lists processes). `MOSH_RELAY_LOG=file` has both relays write down what they do, where they can (the remote one only if it is set on the server too) |
 | `--stdio`, `--copy` | `-X words` at each end, saying what the process at that end of the stream is (see `mosh-server(1)`) |
 
 `MOSH_RELAY_COMMAND` is the command that reaches a relay on the server, as
