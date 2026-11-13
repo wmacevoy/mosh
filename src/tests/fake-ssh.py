@@ -55,7 +55,8 @@ if proxy is not None:
     listener.bind(("127.0.0.1", 0))
     listener.listen(1)
     listener.settimeout(20)
-    line = proxy.replace("%h", "localhost").replace("%p", str(listener.getsockname()[1]))
+    # (the address, not a name: what "localhost" is varies, and we listen on this)
+    line = proxy.replace("%h", "127.0.0.1").replace("%p", str(listener.getsockname()[1]))
     # (ssh runs it with the user's shell; its standard error is ssh's own)
     through = subprocess.Popen([os.environ.get("SHELL", "/bin/sh"), "-c", line], stdin=subprocess.PIPE, stdout=subprocess.PIPE)
     try:
