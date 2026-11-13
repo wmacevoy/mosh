@@ -31,7 +31,7 @@
 */
 
 /* Tests UDP forwarding: specification parsing, the wire format,
-   duplicate suppression, and a round trip through a pair of forwarders
+   duplicate suppression, and a round trip through a pair of meetups
    joined by an in-memory side channel. */
 
 #include <cstdio>
@@ -299,7 +299,7 @@ static void test_fragments( void )
   CHECK( a.add( f[3], out, parity ) == DatagramAssembly::COMPLETE && out == d && parity );
 }
 
-/* Joins two forwarders, standing in for an established mosh session. */
+/* Joins two meetups, standing in for an established mosh session. */
 class TestLink : public SideChannelLink
 {
 public:
@@ -678,11 +678,11 @@ static void test_punch( void )
   CHECK( !parse_ip_port( "host:22", a ) && !parse_ip_port( "::1:22", a ) && !parse_ip_port( ":22", a ) );
 
   /* a request that shows a key: to those who have the key, and to no one else */
-  const std::string stun_key = Crypto::Base64Key().printable_key(), other_key = Crypto::Base64Key().printable_key();
-  const std::string keyed = stun_keyed_txid( stun_key );
-  CHECK( keyed.size() == 12 && stun_txid_has_key( keyed.data(), stun_key ) );
-  CHECK( !stun_txid_has_key( keyed.data(), other_key ) && !stun_txid_has_key( txid, stun_key ) );
-  CHECK( stun_keyed_txid( stun_key ) != keyed ); /* (a new one each time) */
+  const std::string meetup_key = Crypto::Base64Key().printable_key(), other_key = Crypto::Base64Key().printable_key();
+  const std::string keyed = meetup_proof( meetup_key );
+  CHECK( keyed.size() == 12 && meetup_proof_ok( keyed.data(), meetup_key ) );
+  CHECK( !meetup_proof_ok( keyed.data(), other_key ) && !meetup_proof_ok( txid, meetup_key ) );
+  CHECK( meetup_proof( meetup_key ) != keyed ); /* (a new one each time) */
 
   /* two ends, each knowing only the other's port, and a third who has not the key */
   const std::string key = Crypto::Base64Key().printable_key();

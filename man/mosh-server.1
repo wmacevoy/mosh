@@ -63,13 +63,18 @@ cannot reach the server; see \fB\-\-relay\fP in
 .BR mosh (1).
 It exits when its input ends.
 
-Run as \fBmosh\-server stun\fP \fIPORT\fP it is a STUN server (RFC
-8489) on that UDP port, for \fBmosh \-\-punch\fP to ask where each end
-of a session appears to be from outside.  With a key in the environment
-variable \fBMOSH_STUN_KEY\fP (\fBmosh\-server stun\-key\fP prints a new
-one) it answers only those who show the same key, and for them will
-also pass a session's datagrams between its two ends when they can find
-no way to each other directly.  It runs until killed.
+Run as \fBmosh\-server meetup\fP \fIPORT\fP it is a meetup on that UDP
+port: a place with a public address where the two ends of a session,
+each behind a NAT, can find each other (see \fB\-\-meetup\fP and
+\fB\-\-punch\fP in
+.BR mosh (1)).
+It tells an asker where it appears to be from outside, as a STUN server
+(RFC 8489) does.  With a key in the environment variable
+\fBMOSH_MEETUP_KEY\fP (\fBmosh\-server meetup\-key\fP prints a new one)
+it answers only those who show the same key, and for them will also
+pass a session's datagrams between its two ends, for as long as they
+need, when they can find no way to each other directly.  It runs until
+killed.
 
 The \fB\-X\fP \fIWORDS\fP option of \fBmosh\-server new\fP and of
 \fBmosh\-client\fP gives the session a stream between a process started

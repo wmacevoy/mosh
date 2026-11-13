@@ -138,9 +138,15 @@ const char USAGE[] = R"USAGE(Usage: %s [options] [--] [user@]host [command...]
                                 look for a way straight to the server by
                                 UDP through the NATs in between, and use
                                 it instead (default: auto)
-        --stun=HOST:PORT[,...]  the servers asked, for that, where each
-                                end appears to be from outside; "none"
-                                to ask nobody (default: two public ones)
+        --meetup=HOST:PORT   a meetup of your own for that (mosh-server
+                                meetup, with its key in MOSH_MEETUP_KEY):
+                                it says where each end appears to be,
+                                and passes the session on by UDP when
+                                the ends can find no way to each other
+        --stun=HOST:PORT[,...]  plain STUN servers to ask where each end
+                                appears to be; "none" to ask none
+                                (default: two public ones, unless there
+                                is a meetup)
 
         --ssh=COMMAND        ssh command to run when setting up session
                                 (example: "ssh -p 2222")
@@ -261,6 +267,7 @@ const Option OPTIONS[] = {
   { "relay", true, false },
   { "punch", true, false },
   { "stun", true, false },
+  { "meetup", true, false },
   { "copy", false, false },
   { "r", false, false },
   { "auto", false, false },
@@ -819,6 +826,9 @@ bool MoshWrapper::run( const std::vector<std::string>& args,
     }
     if ( s.has( "stun" ) ) {
       setenv( "MOSH_STUN", s.value( "stun" ).c_str(), 1 );
+    }
+    if ( s.has( "meetup" ) ) {
+      setenv( "MOSH_MEETUP", s.value( "meetup" ).c_str(), 1 );
     }
 
     std::string predict = s.value( "predict" );

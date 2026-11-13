@@ -79,37 +79,43 @@ namespace Network {
 
 /* The mark that begins a probe, and a control message between relays (relay.h). */
 extern const char PUNCH_MARK[8];
-/* The mark that begins a datagram to be passed on, or that has been (see stun_serve). */
-extern const char FORWARD_MARK[8];
-static const size_t FORWARD_HEADER = 8 + 12 + 16; /* the mark; proof of the key; which pair of ends */
+/* The mark that begins a datagram for a meetup to pass on, or that one has (see meetup_serve). */
+extern const char MEETUP_MARK[8];
+static const size_t MEETUP_HEADER = 8 + 12 + 16; /* the mark; proof of the key; which pair of ends */
 
 /* A STUN request for our outside address: txid is 12 bytes of anything. */
 std::string stun_request( const char* txid );
 /*
- * Twelve bytes for a request that show the asker holds a key, for a
- * server that answers only those who do (stun_serve, below): four at
- * random, and eight that only the key gives for those four.  To a
+ * Twelve bytes that show their sender holds a meetup's key (meetup_serve,
+ * below): four at random, and eight that only the key gives for those
+ * four.  They go where a STUN request has its transaction id, and to a
  * server that knows nothing of this they are twelve bytes like any
  * others.  key: as Crypto::Base64Key prints it.
  */
-std::string stun_keyed_txid( const std::string& key );
-bool stun_txid_has_key( const char* txid, const std::string& key );
+std::string meetup_proof( const std::string& key );
+bool meetup_proof_ok( const char* txid, const std::string& key );
 /*
- * A STUN server, of the plainest kind: it says where a request came
- * from.  With a key it answers only requests that show the key; and in
- * any case no more than a few hundred a second, so as to be no use to
- * anyone for anything else.  Runs until killed; returns an exit status
- * if it cannot start.  ("mosh-server stun PORT")
+ * A meetup: a machine with a public address where the two ends of a
+ * session, each behind its NAT, can find each other.  ("mosh-server
+ * meetup PORT")  It does two things.
  *
- * With a key it does one thing more, for two ends that can find no way
- * to each other: it passes datagrams between them.  Each sends it
- *     FORWARD_MARK, twelve bytes showing the key, sixteen naming the pair, the datagram
+ * It answers the STUN question: it says where a request came from.
+ * With a key it answers only requests that show the key; and in any
+ * case no more than a few hundred a second, so as to be no use to
+ * anyone for anything else.
+ *
+ * And with a key, for two ends that can find no way to each other, it
+ * passes their datagrams between them, for as long as they need.  Each
+ * sends it
+ *     MEETUP_MARK, twelve bytes showing the key, sixteen naming the pair, the datagram
  * and it sends the same on to whichever other address has lately sent
  * it datagrams naming that pair.  So the two still talk by UDP, though
- * by way of here.  It reads nothing of what it passes (which is sealed
- * by its ends), and passes nothing for anyone without the key.
+ * through here.  It reads nothing of what it passes (which is sealed by
+ * its ends), and passes nothing for anyone without the key.
+ *
+ * Runs until killed; returns an exit status if it cannot start.
  */
-int stun_serve( const char* port, const std::string& key );
+int meetup_serve( const char* port, const std::string& key );
 /* If this is an answer to one that says where we were seen: true, and where. */
 bool stun_parse( const char* data, size_t len, Addr& mapped );
 
@@ -148,9 +154,9 @@ private:
   bool locked;
   uint64_t heard, started, last_probe, last_direct_probe;
 
-  /* servers that will pass datagrams on, for those with the key: learnt by their answering as STUN servers */
-  std::string forward_proof, forward_pair;
-  std::vector<Addr> forwarders;
+  /* meetups, which will pass datagrams on for those with their key: learnt by their answering the STUN question */
+  std::string key_proof, pair_name;
+  std::vector<Addr> meetups;
 
   void transmit( const std::string& packet, const Addr& to, bool via );
   void probe( char type, const Addr& to, bool via );
@@ -162,16 +168,16 @@ private:
 public:
   /*
    * key: as Crypto::Base64Key prints it.  The end that made it up is the
-   * initiator.  stun_servers: "host:port", asked (from another process,
-   * so as not to wait on name lookups) where we appear to be; stun_key:
-   * if they want one (see stun_keyed_txid).
+   * initiator.  ask: "host:port" of meetups and STUN servers, asked
+   * (from another process, so as not to wait on name lookups) where we
+   * appear to be; meetup_key: for those of them that are meetups.
    * Throws NetworkException if there is no socket to be had.
    */
   Punch( bool s_initiator,
          const std::string& key,
-         const std::vector<std::string>& stun_servers,
+         const std::vector<std::string>& ask,
          uint64_t now,
-         const std::string& stun_key = "" );
+         const std::string& meetup_key = "" );
   ~Punch();
 
   int fd( void ) const { return sock; }
@@ -188,10 +194,10 @@ public:
   /* Whether there is, as far as we know, a way through just now. */
   bool open( uint64_t now ) const { return locked && now - heard < OPEN_FOR; }
   uint64_t last_heard( void ) const { return locked ? heard : 0; }
-  /* Where the other end is; or "by way of" where, if datagrams are being passed on to it. */
+  /* Where the other end is; or which meetup, if datagrams are being passed on to it through one. */
   std::string where( void ) const
   {
-    return locked ? ( peer_via ? "by way of " : "" ) + format_ip_port( peer ) : std::string();
+    return locked ? ( peer_via ? "the meetup at " : "" ) + format_ip_port( peer ) : std::string();
   }
   bool direct( void ) const { return locked && !peer_via; }
 

@@ -59,7 +59,7 @@
 using namespace Network;
 
 const char Network::PUNCH_MARK[8] = { 0, 'M', 'O', 'S', 'H', 'P', 'C', 'H' };
-const char Network::FORWARD_MARK[8] = { 0, 'M', 'O', 'S', 'H', 'F', 'W', 'D' };
+const char Network::MEETUP_MARK[8] = { 0, 'M', 'O', 'S', 'H', 'F', 'W', 'D' };
 
 static const uint32_t STUN_COOKIE = 0x2112A442;
 static const uint64_t DIRECTION = uint64_t( 1 ) << 63; /* set in the numbers of probes from the end that did not make the key */
@@ -85,7 +85,7 @@ std::string Network::stun_request( const char* txid )
 }
 
 /* The eight bytes that the key gives for four. */
-static std::string stun_mark( const char* four, const std::string& key )
+static std::string proof_mark( const char* four, const std::string& key )
 {
   uint64_t n = 0;
   for ( int i = 0; i < 4; i++ ) {
@@ -97,16 +97,16 @@ static std::string stun_mark( const char* four, const std::string& key )
   return sealed.substr( sealed.size() - 8 );
 }
 
-std::string Network::stun_keyed_txid( const std::string& key )
+std::string Network::meetup_proof( const std::string& key )
 {
   char four[4];
   PRNG().fill( four, sizeof( four ) );
-  return std::string( four, 4 ) + stun_mark( four, key );
+  return std::string( four, 4 ) + proof_mark( four, key );
 }
 
-bool Network::stun_txid_has_key( const char* txid, const std::string& key )
+bool Network::meetup_proof_ok( const char* txid, const std::string& key )
 {
-  const std::string mark = stun_mark( txid, key );
+  const std::string mark = proof_mark( txid, key );
   unsigned char difference = 0;
   for ( size_t i = 0; i < 8; i++ ) {
     difference |= static_cast<unsigned char>( mark[i] ^ txid[4 + i] );
@@ -114,7 +114,7 @@ bool Network::stun_txid_has_key( const char* txid, const std::string& key )
   return difference == 0;
 }
 
-int Network::stun_serve( const char* port, const std::string& key )
+int Network::meetup_serve( const char* port, const std::string& key )
 {
   struct addrinfo hints, *res = NULL;
   memset( &hints, 0, sizeof( hints ) );
@@ -122,20 +122,20 @@ int Network::stun_serve( const char* port, const std::string& key )
   hints.ai_socktype = SOCK_DGRAM;
   hints.ai_flags = AI_PASSIVE | AI_NUMERICSERV;
   if ( getaddrinfo( NULL, port, &hints, &res ) != 0 ) {
-    fprintf( stderr, "mosh-server stun: %s is not a port\n", port );
+    fprintf( stderr, "mosh-server meetup: %s is not a port\n", port );
     return 1;
   }
   const int sock = socket( AF_INET, SOCK_DGRAM, 0 );
   if ( sock < 0 || bind( sock, res->ai_addr, res->ai_addrlen ) < 0 ) {
-    perror( "mosh-server stun: bind" );
+    perror( "mosh-server meetup: bind" );
     return 1;
   }
   freeaddrinfo( res );
   if ( !key.empty() ) {
     try {
-      stun_keyed_txid( key );
+      meetup_proof( key );
     } catch ( const std::exception& e ) {
-      fprintf( stderr, "mosh-server stun: MOSH_STUN_KEY is not a key (mosh-server stun-key makes one)\n" );
+      fprintf( stderr, "mosh-server meetup: MOSH_MEETUP_KEY is not a key (mosh-server meetup-key makes one)\n" );
       return 1;
     }
   }
@@ -172,12 +172,12 @@ int Network::stun_serve( const char* port, const std::string& key )
     }
 
     /* To be passed on?  Only for those with the key. */
-    if ( !key.empty() && static_cast<size_t>( n ) >= FORWARD_HEADER && from.sa.sa_family == AF_INET
-         && memcmp( request, FORWARD_MARK, sizeof( FORWARD_MARK ) ) == 0 ) {
+    if ( !key.empty() && static_cast<size_t>( n ) >= MEETUP_HEADER && from.sa.sa_family == AF_INET
+         && memcmp( request, MEETUP_MARK, sizeof( MEETUP_MARK ) ) == 0 ) {
       const std::string proof( request + 8, 12 );
       if ( proofs.find( proof ) == proofs.end() ) {
         try {
-          if ( !stun_txid_has_key( proof.data(), key ) ) {
+          if ( !meetup_proof_ok( proof.data(), key ) ) {
             continue;
           }
         } catch ( const std::exception& e ) {
@@ -243,7 +243,7 @@ int Network::stun_serve( const char* port, const std::string& key )
       continue;
     }
     try {
-      if ( !key.empty() && !stun_txid_has_key( request + 8, key ) ) {
+      if ( !key.empty() && !meetup_proof_ok( request + 8, key ) ) {
         continue; /* not one of ours: and no answer says so, or that we are here at all */
       }
     } catch ( const std::exception& e ) {
@@ -352,7 +352,7 @@ static void ask_stun( int sock, const std::vector<std::string>& servers, const s
   std::string request = stun_request( txid );
   if ( !key.empty() ) {
     try {
-      request = stun_request( stun_keyed_txid( key ).data() );
+      request = stun_request( meetup_proof( key ).data() );
     } catch ( const std::exception& e ) {
       /* not a key: then ask as anyone would */
     }
@@ -396,26 +396,26 @@ static void ask_stun( int sock, const std::vector<std::string>& servers, const s
 
 Punch::Punch( bool s_initiator,
               const std::string& key,
-              const std::vector<std::string>& stun_servers,
+              const std::vector<std::string>& ask,
               uint64_t now,
-              const std::string& stun_key )
+              const std::string& meetup_key )
   : sock( socket( AF_INET, SOCK_DGRAM, 0 ) ), initiator( s_initiator ),
     session( new Crypto::Session( Crypto::Base64Key( key ) ) ), send_seq( 0 ), heard_seq( 0 ), candidates(),
     local_new(), local_all(), peer(), peer_via( false ), locked( false ), heard( 0 ), started( now ),
-    last_probe( 0 ), last_direct_probe( 0 ), forward_proof(), forward_pair(), forwarders()
+    last_probe( 0 ), last_direct_probe( 0 ), key_proof(), pair_name(), meetups()
 {
-  if ( !stun_key.empty() ) {
+  if ( !meetup_key.empty() ) {
     /*
-     * A server that wants a key will also pass datagrams on for us.  What
+     * A meetup will also pass datagrams on for us.  What
      * shows it the key; and a name for the two of us, which is something
      * both ends can work out and nobody else: the seal on nothing at all.
      */
     try {
-      forward_proof = stun_keyed_txid( stun_key );
+      key_proof = meetup_proof( meetup_key );
       const std::string sealed = session->encrypt( Crypto::Message( Crypto::Nonce( 0 ), "" ) );
-      forward_pair = sealed.substr( sealed.size() - 16 );
+      pair_name = sealed.substr( sealed.size() - 16 );
     } catch ( const std::exception& e ) {
-      forward_proof.clear();
+      key_proof.clear();
     }
   }
 
@@ -456,7 +456,7 @@ Punch::Punch( bool s_initiator,
     freeifaddrs( interfaces );
   }
 
-  ask_stun( sock, stun_servers, stun_key );
+  ask_stun( sock, ask, meetup_key );
 }
 
 Punch::~Punch()
@@ -500,7 +500,7 @@ std::vector<std::string> Punch::take_local_candidates( void )
 void Punch::transmit( const std::string& packet, const Addr& to, bool via )
 {
   if ( via ) {
-    const std::string wrapped = std::string( FORWARD_MARK, sizeof( FORWARD_MARK ) ) + forward_proof + forward_pair + packet;
+    const std::string wrapped = std::string( MEETUP_MARK, sizeof( MEETUP_MARK ) ) + key_proof + pair_name + packet;
     sendto( sock, wrapped.data(), wrapped.size(), 0, &to.sa, sizeof( to.sin ) );
   } else {
     sendto( sock, packet.data(), packet.size(), 0, &to.sa, sizeof( to.sin ) );
@@ -522,7 +522,7 @@ void Punch::tick( uint64_t now )
       last_probe = now;
       probe( '?', peer, peer_via );
     }
-    /* By way of a server is second best: go on looking, now and then, for a way straight there. */
+    /* Through a meetup is second best: go on looking, now and then, for a way straight there. */
     if ( peer_via && now - last_direct_probe >= SLOW_EVERY ) {
       last_direct_probe = now;
       for ( size_t i = 0; i < candidates.size(); i++ ) {
@@ -531,15 +531,15 @@ void Punch::tick( uint64_t now )
     }
     return;
   }
-  /* No way through, that we know of.  Try everywhere the other end might be, and by way of whoever will pass it on. */
+  /* No way through, that we know of.  Try everywhere the other end might be, and through any meetup. */
   const uint64_t every = ( now - started < FAST_FOR ) ? FAST_EVERY : SLOW_EVERY;
   if ( now - last_probe >= every ) {
     last_probe = now;
     for ( size_t i = 0; i < candidates.size(); i++ ) {
       probe( '?', candidates[i], false );
     }
-    for ( size_t i = 0; i < forwarders.size(); i++ ) {
-      probe( '?', forwarders[i], true );
+    for ( size_t i = 0; i < meetups.size(); i++ ) {
+      probe( '?', meetups[i], true );
     }
     if ( locked && !peer_via ) {
       probe( '?', peer, false );
@@ -563,14 +563,14 @@ Punch::Got Punch::receive( uint64_t now, std::string& datagram )
   /* Passed on by a server, from the other end?  Then what matters is what is inside. */
   const char* buf = whole;
   bool via = false;
-  if ( !forward_proof.empty() && static_cast<size_t>( n ) >= FORWARD_HEADER
-       && memcmp( whole, FORWARD_MARK, sizeof( FORWARD_MARK ) ) == 0 ) {
-    if ( memcmp( whole + 20, forward_pair.data(), 16 ) != 0 ) {
+  if ( !key_proof.empty() && static_cast<size_t>( n ) >= MEETUP_HEADER
+       && memcmp( whole, MEETUP_MARK, sizeof( MEETUP_MARK ) ) == 0 ) {
+    if ( memcmp( whole + 20, pair_name.data(), 16 ) != 0 ) {
       return OTHER;
     }
     via = true;
-    buf = whole + FORWARD_HEADER;
-    n -= FORWARD_HEADER;
+    buf = whole + MEETUP_HEADER;
+    n -= MEETUP_HEADER;
   }
 
   if ( static_cast<size_t>( n ) > sizeof( PUNCH_MARK ) && memcmp( buf, PUNCH_MARK, sizeof( PUNCH_MARK ) ) == 0 ) {
@@ -585,7 +585,7 @@ Punch::Got Punch::receive( uint64_t now, std::string& datagram )
       heard_seq = seq & ~DIRECTION;
       /*
        * Wherever it is now, it is there: except that while there is a way
-       * straight to it, hearing from it by way of a server as well is no
+       * straight to it, hearing from it through a meetup as well is no
        * reason to go the long way round.
        */
       if ( !( via && locked && !peer_via && now - heard < OPEN_FOR ) ) {
@@ -624,14 +624,14 @@ Punch::Got Punch::receive( uint64_t now, std::string& datagram )
       local_all.push_back( text );
       local_new.push_back( text );
     }
-    /* A server that took our key will pass datagrams on, too. */
-    if ( !forward_proof.empty() ) {
+    /* One that took our key is a meetup, and will pass datagrams on, too. */
+    if ( !key_proof.empty() ) {
       bool have = false;
-      for ( size_t i = 0; i < forwarders.size(); i++ ) {
-        have = have || same( forwarders[i], from );
+      for ( size_t i = 0; i < meetups.size(); i++ ) {
+        have = have || same( meetups[i], from );
       }
-      if ( !have && forwarders.size() < 4 ) {
-        forwarders.push_back( from );
+      if ( !have && meetups.size() < 4 ) {
+        meetups.push_back( from );
         last_probe = 0;
       }
     }

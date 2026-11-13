@@ -193,9 +193,15 @@ qq{Usage: $0 [options] [--] [user@]host [command...]
                                 look for a way straight to the server by
                                 UDP through the NATs in between, and use
                                 it instead (default: auto)
-        --stun=HOST:PORT[,...]  the servers asked, for that, where each
-                                end appears to be from outside; "none"
-                                to ask nobody (default: two public ones)
+        --meetup=HOST:PORT   a meetup of your own for that (mosh-server
+                                meetup, with its key in MOSH_MEETUP_KEY):
+                                it says where each end appears to be,
+                                and passes the session on by UDP when
+                                the ends can find no way to each other
+        --stun=HOST:PORT[,...]  plain STUN servers to ask where each end
+                                appears to be; "none" to ask none
+                                (default: two public ones, unless there
+                                is a meetup)
 
         --ssh=COMMAND        ssh command to run when setting up session
                                 (example: "ssh -p 2222")
@@ -308,6 +314,7 @@ GetOptions( 'client=s' => \$client,
 	    'relay=s' => \$relay,
 	    'punch=s' => \my $punch,
 	    'stun=s' => \my $stun,
+	    'meetup=s' => \my $meetup,
 	    'no-fragment-parity' => sub { $fragment_parity = 'never' },
 	    'experimental-remote-ip=s' => \$use_remote_ip) or die( $copy ? $copy_usage : $usage );
 
@@ -331,6 +338,7 @@ if ( defined $punch ) {
   $ENV{ 'MOSH_PUNCH' } = $punch;
 }
 $ENV{ 'MOSH_STUN' } = $stun if defined $stun;
+$ENV{ 'MOSH_MEETUP' } = $meetup if defined $meetup;
 
 if ( not grep { $_ eq $relay } qw { auto always never } ) {
   die "$0: Unknown relay mode \"$relay\".\n\n$usage";

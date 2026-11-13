@@ -119,6 +119,16 @@ static std::vector<char*> wrapped_argv;
 
 int main( int argc, char* argv[] )
 {
+  /*
+   * A name that was dropped, still set: to go on without saying so would
+   * be to work less well than was asked for, silently.
+   */
+  if ( getenv( "MOSH_STUN_KEY" ) && !getenv( "MOSH_MEETUP_KEY" ) ) {
+    fputs( "mosh: MOSH_STUN_KEY is set, and is no longer used: since 1.4.0-pf.7 a meetup's key is MOSH_MEETUP_KEY,\n"
+           "      and the meetup itself is MOSH_MEETUP (not MOSH_STUN).  Going on without your meetup.\n",
+           stderr );
+  }
+
   if ( argc > 0 ) {
     std::string name( argv[0] );
     const size_t slash = name.find_last_of( "/\\" );

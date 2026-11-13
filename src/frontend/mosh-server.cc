@@ -214,11 +214,21 @@ int main( int argc, char* argv[] )
    * client's datagrams, arriving over ssh, to a server that is already
    * running here, for when they cannot get here by UDP.  See relay.h.
    */
-  /* A STUN server, for finding ways through NATs (src/network/punch.h), and a key for a private one. */
-  if ( argc == 3 && strcmp( argv[1], "stun" ) == 0 ) {
-    return Network::stun_serve( argv[2], getenv( "MOSH_STUN_KEY" ) ? getenv( "MOSH_STUN_KEY" ) : "" );
+  /* A meetup, where two ends behind NATs find each other (src/network/punch.h), and a key for one. */
+  if ( argc == 3 && strcmp( argv[1], "meetup" ) == 0 ) {
+    return Network::meetup_serve( argv[2], getenv( "MOSH_MEETUP_KEY" ) ? getenv( "MOSH_MEETUP_KEY" ) : "" );
   }
-  if ( argc == 2 && strcmp( argv[1], "stun-key" ) == 0 ) {
+  /*
+   * What a meetup was called for one release.  Not kept as another name
+   * for it: but said, because left alone these words would be taken for
+   * an address to listen on, and start a session nobody asked for.
+   */
+  if ( argc >= 2 && ( strcmp( argv[1], "stun" ) == 0 || strcmp( argv[1], "stun-key" ) == 0 ) ) {
+    fprintf( stderr, "%s: \"%s\" is no longer a command: since 1.4.0-pf.7 it is \"meetup%s\", and its key is MOSH_MEETUP_KEY.\n",
+             argv[0], argv[1], strcmp( argv[1], "stun" ) == 0 ? "" : "-key" );
+    return 1;
+  }
+  if ( argc == 2 && strcmp( argv[1], "meetup-key" ) == 0 ) {
     printf( "%s\n", Crypto::Base64Key().printable_key().c_str() );
     return 0;
   }

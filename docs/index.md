@@ -70,7 +70,7 @@ It also makes UDP forwarding possible at all, which ssh does not offer.
 ## Where to go next
 
 - **[Start here](students.md)**: what this is, why you want it, and how to
-  set it up, for someone who has not used mosh. Includes a relay of your own
+  set it up, for someone who has not used mosh. Includes a meetup of your own
   on a free cloud machine, and what changes if you have IPv6. There are
   [slides](slides/) to go with it.
 - [Using it](usage.md): options, examples, building, troubleshooting.

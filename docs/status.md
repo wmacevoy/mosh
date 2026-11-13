@@ -27,7 +27,7 @@ failures and 2 skips, as before, plus the new unit tests).
 | `file-copy` | `mocp`'s sender and receiver joined directly: single files and trees, the destination as a name and as a directory, patterns, a copy carried on from a part file (and not from one that is the wrong file), unchanged files skipped, `--delete`, name clashes, and `--auto` following changes, additions and removals |
 | `mocp.test` | The `mocp` and `mosh --stdio` commands with a real `mosh-server` and `mosh-client` (the server being this machine, without ssh): copies in both directions, by pattern, repeated, a missing source reported from the other end, and `--auto --delete` keeping a directory in step |
 | `wrapper.test` | The `mosh` command itself, which every session starts with: the one built into `mosh-client` and the Perl script it replaced, put through the same things with a stand-in for ssh that "logs in" to this machine. A terminal session with the server's address found each of the three ways (the default one being through an ssh `ProxyCommand`, which the stand-in really runs and passes bytes through), `--stdio`, `mocp` each way, and a copy with the session carried over ssh (`--relay=always`). Needs `python3` and `perl` |
-| `nat-lab.py` | (Not in `make check`: it needs to be root in a network namespace. CI runs it.) The five NAT scenarios in the table below, with real address translation and `mosh-server stun` as the server on the "Internet" |
+| `nat-lab.py` | (Not in `make check`: it needs to be root in a network namespace. CI runs it.) The five NAT scenarios in the table below, with real address translation and `mosh-server meetup` as the server on the "Internet" |
 | `relay.test` | Sessions carried by the relay: from the start; found by the client when UDP gets no answer; with the relay told an address that is not the server's own; over IPv6; with the relay killed part way, after which the session carries on through a new one; with the two relays finding a direct path to each other, asking a STUN server (the test's own), and letting the stream go; and that no relay outlives its client. The remote relay is run directly, where ssh would run it. Needs `python3` |
 | `forward-e2e.test` | A real `mosh-server` and `mosh-client` with one forward of each kind (`-L`, `-R`, `-LU`, `-RU`): TCP both ways with an orderly close, and UDP datagrams sent whole and in fragments. Needs `python3`; skipped without it |
 | `tcp-forward` | Six simulated hours out of contact without losing a connection; and real TCP connections through a pair of socket adapters, clean and with 5% of datagrams lost, with a small MTU, a refusing target, a peer that does not support forwarding, and local and remote forwards sharing one session |
@@ -45,7 +45,7 @@ failures and 2 skips, as before, plus the new unit tests).
 | UDP cut off in the middle of a session (`--relay=auto`) | Carries on through the relay about 12 seconds later; goes back to UDP when it returns, and closes the relay a minute after |
 | A session between a client behind one NAT and a server behind another (Linux's own NAT, in network namespaces, with a firewall that lets nothing in unasked), told only an address it cannot reach | Comes up through the relay; each end learns its outside address from a STUN server; a direct path opens through both NATs; the stream is closed and 300 KB goes by UDP alone |
 | The same, with the server's NAT giving a random port to each destination | No path is found, and the session goes on through the relay |
-| The same, with a `mosh-server stun` that has a key | A path is found by UDP by way of that server, the stream is closed, and 300 KB goes that way; a request without the key gets no answer |
+| The same, with a meetup (`mosh-server meetup`) that has a key | A path is found by UDP through the meetup, the stream is closed, and 300 KB goes that way; a request without the key gets no answer |
 | The same, and then the client's NAT changes its outside address | The session is back in 3 seconds through the relay, a new direct path is found from the new address, and the stream is closed again |
 | Client and server behind the same NAT | They find each other by their own addresses, not through the NAT's outside one |
 | `mocp` of 12 MB with the path cut for 25 seconds part way | Nothing arrives while it is cut; the copy finishes 7 seconds after, identical |
@@ -163,15 +163,15 @@ own ssh server or its firewall. Provided, not promised.
 
 **IPv6.** Sessions, forwarding, copying and the ssh fallback work over IPv6
 (`mosh -6`). Path-finding does not: neither hole punching nor
-`mosh-server stun` speaks IPv6, so a firewall in front of a machine with a
-public IPv6 address has to be opened by hand, and a relay has to have an
+`mosh-server meetup` speaks IPv6, so a firewall in front of a machine with a
+public IPv6 address has to be opened by hand, and a meetup has to have an
 IPv4 address.
 
 **Hole punching is IPv4 only, and does not get through every NAT.** Where it
 does not, the session stays on ssh. It asks third parties (public STUN
 servers, by default) where each end appears to be, which tells them those
-addresses; `--stun` changes whom, and `--stun=none` or `--punch=never` asks
-nobody. The remote relay stays running for up to a minute after a direct path
+addresses; `--stun` changes whom, a meetup of your own replaces them, and
+`--stun=none` or `--punch=never` asks nobody. The remote relay stays running for up to a minute after a direct path
 was last used.
 
 **The local relay listens on a loopback UDP port.** Another user of your

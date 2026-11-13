@@ -75,6 +75,12 @@ for which in built-in perl; do
 done
 
 # what only the built-in one has to get right: its own name, and saying no
+# names that were dropped are refused or remarked on, not quietly taken for something else
+said=$("$server" stun 60000 2>&1 </dev/null)
+check "the old name for a meetup is refused, and says the new one" \
+    "$([ $? -eq 1 ] && printf '%s\n' "$said" | grep -q meetup && echo ok)"
+said=$(MOSH_STUN_KEY=x "$client" mosh --version 2>&1)
+check "a dropped variable still set is remarked on" "$(printf '%s\n' "$said" | grep -q MOSH_MEETUP_KEY && echo ok)"
 "$client" mosh --punch=sometimes localhost >/dev/null 2>&1
 check "an unknown --punch is refused" "$([ $? -eq 1 ] && echo ok)"
 ln -s "$client" "$work/mosh"

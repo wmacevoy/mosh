@@ -348,12 +348,23 @@ the way through stops working.  Not every NAT can be got through; where
 one cannot, the session stays on ssh.  IPv4 only.
 
 .TP
+.B \-\-meetup=\fIHOST:PORT\fP
+A meetup of your own for \fB\-\-punch\fP to use: a machine with a public
+address running \fBmosh\-server meetup\fP (see
+.BR mosh-server (1)).
+It is asked where each end appears to be, in place of the public STUN
+servers; and, given its key in the environment variable
+\fBMOSH_MEETUP_KEY\fP, it passes the session on by UDP when the two ends
+can find no way to each other.  \fBMOSH_MEETUP\fP in the environment
+says the same.
+
+.TP
 .B \-\-stun=\fIHOST:PORT\fP[,...]
-The servers that \fB\-\-punch\fP asks where each end appears to be from
-outside (STUN, RFC 8489).  The default is two public ones,
-stun.l.google.com:19302 and stun.cloudflare.com:3478, which thereby
-learn the addresses of both ends, and are asked only when a session has
-had to fall back to ssh.  \fBnone\fP asks nobody.
+Plain STUN servers (RFC 8489) for \fB\-\-punch\fP to ask where each end
+appears to be from outside.  The default, when there is no meetup, is
+two public ones, stun.l.google.com:19302 and stun.cloudflare.com:3478,
+which thereby learn the addresses of both ends, and are asked only when
+a session has had to fall back to ssh.  \fBnone\fP asks none.
 
 .TP
 .B \-\-stdio

@@ -191,7 +191,7 @@ session has not finished connecting (wait a second and reload).
 **There are files called `.something.mocp-part`.** A copy was interrupted.
 Run the same `mocp` command again and it finishes them; or delete them.
 
-## Your own relay, on a free cloud machine
+## Your own meetup, on a free cloud machine
 
 *Optional. You need this only if the machine you want to reach has no public
 address: a desktop at home, a lab machine behind a firewall.*
@@ -213,7 +213,7 @@ it has changed over the years, and a public IP address is not always free.
 
 In the AWS console, go to **EC2**, then **Launch instance**:
 
-- **Name:** `mosh-relay`
+- **Name:** `mosh-meetup`
 - **Image:** Ubuntu Server 24.04 LTS
 - **Instance type:** whichever is marked *Free tier eligible* (a `micro`)
 - **Key pair:** create one, download the `.pem` file, and keep it safe
@@ -222,67 +222,67 @@ In the AWS console, go to **EC2**, then **Launch instance**:
   | Type | Protocol | Port | Source | For |
   |---|---|---|---|---|
   | SSH | TCP | 22 | Anywhere | logging in |
-  | Custom UDP | UDP | 60000 | Anywhere | the relay |
+  | Custom UDP | UDP | 60000 | Anywhere | the meetup |
 
 Launch it, and note its **Public IPv4 address**. Below it is written
-`RELAY`.
+`MEETUP`.
 
 On your laptop, let ssh use the key file:
 
 ```
-chmod 600 ~/Downloads/mosh-relay.pem
-ssh -i ~/Downloads/mosh-relay.pem ubuntu@RELAY
+chmod 600 ~/Downloads/mosh-meetup.pem
+ssh -i ~/Downloads/mosh-meetup.pem ubuntu@MEETUP
 ```
 
-### 2. Install and start the relay
+### 2. Install and start the meetup
 
-On the relay (you are logged in as `ubuntu`):
+On the meetup (you are logged in as `ubuntu`):
 
 ```
 curl -fsSL https://raw.githubusercontent.com/wmacevoy/mosh/master/scripts/install.sh | sh
 
 mkdir -p ~/.config/mosh
-echo "MOSH_STUN_KEY=$(~/.local/bin/mosh-server stun-key)" > ~/.config/mosh/stun.env
-chmod 600 ~/.config/mosh/stun.env
-cat ~/.config/mosh/stun.env        # this is your key: copy what follows the =
+echo "MOSH_MEETUP_KEY=$(~/.local/bin/mosh-server meetup-key)" > ~/.config/mosh/meetup.env
+chmod 600 ~/.config/mosh/meetup.env
+cat ~/.config/mosh/meetup.env        # this is your key: copy what follows the =
 ```
 
-The key is what makes the relay yours. Without it nobody gets an answer.
+The key is what makes the meetup yours. Without it nobody gets an answer.
 
 Have it start by itself, now and after every reboot:
 
 ```
-sudo tee /etc/systemd/system/mosh-relay.service >/dev/null <<'EOF'
+sudo tee /etc/systemd/system/mosh-meetup.service >/dev/null <<'EOF'
 [Unit]
-Description=Private STUN server and UDP relay for mosh
+Description=A private meetup for mosh
 After=network-online.target
 Wants=network-online.target
 
 [Service]
 User=ubuntu
-EnvironmentFile=/home/ubuntu/.config/mosh/stun.env
-ExecStart=/home/ubuntu/.local/bin/mosh-server stun 60000
+EnvironmentFile=/home/ubuntu/.config/mosh/meetup.env
+ExecStart=/home/ubuntu/.local/bin/mosh-server meetup 60000
 Restart=always
 
 [Install]
 WantedBy=multi-user.target
 EOF
-sudo systemctl enable --now mosh-relay
-systemctl status mosh-relay --no-pager     # should say: active (running)
+sudo systemctl enable --now mosh-meetup
+systemctl status mosh-meetup --no-pager     # should say: active (running)
 ```
 
 ### 3. Tell your laptop about it
 
 Add two lines to the end of `~/.bashrc` (or `~/.zshrc` on a Mac), with your
-relay's address and your key, then open a new terminal:
+meetup's address and your key, then open a new terminal:
 
 ```
-export MOSH_STUN=RELAY:60000
-export MOSH_STUN_KEY=paste-your-key-here
+export MOSH_MEETUP=MEETUP:60000
+export MOSH_MEETUP_KEY=paste-your-key-here
 ```
 
 From now on, whenever mosh cannot reach a server directly, it asks your
-relay for help instead of a public service.
+meetup for help instead of a public service.
 
 ### 4. Reach a machine at home through it
 
@@ -291,25 +291,25 @@ outside. On the **home machine** (install this build there first, step 3
 above, and put your laptop's ssh key on it):
 
 ```
-ssh -i mosh-relay.pem -N -R 2222:localhost:22 ubuntu@RELAY
+ssh -i mosh-meetup.pem -N -R 2222:localhost:22 ubuntu@MEETUP
 ```
 
 Leave that running (in `tmux`, or as a service). It makes port 2222 on the
-relay lead to the home machine's ssh.
+meetup lead to the home machine's ssh.
 
 On your **laptop**, add to `~/.ssh/config`:
 
 ```
-Host relay
-    HostName RELAY
+Host meetup
+    HostName MEETUP
     User ubuntu
-    IdentityFile ~/Downloads/mosh-relay.pem
+    IdentityFile ~/Downloads/mosh-meetup.pem
 
 Host home
     HostName localhost
     Port 2222
     User your-name-on-the-home-machine
-    ProxyJump relay
+    ProxyJump meetup
 ```
 
 Check that `ssh home` logs you in. Then:
@@ -318,12 +318,12 @@ Check that `ssh home` logs you in. Then:
 mosh --experimental-remote-ip=remote home
 ```
 
-For the first few seconds the session travels through the relay by ssh.
+For the first few seconds the session travels inside ssh, through the meetup machine.
 Then the two ends find each other and it moves to a direct connection, or
-to UDP passed along by your relay if a direct one is not possible. `mocp`
+to UDP passed along by your meetup if a direct one is not possible. `mocp`
 and `-L` work the same way: `mocp --experimental-remote-ip=remote ...`.
 
-When you are finished with the relay for good, **terminate the instance** in
+When you are finished with the meetup for good, **terminate the instance** in
 the EC2 console so that it cannot cost you anything.
 
 ## If you have IPv6
@@ -331,13 +331,13 @@ the EC2 console so that it cannot cost you anything.
 *Optional, and worth two minutes if the machine you want to reach is at
 home.*
 
-Everything above about relays exists because of one fact: there are not
+Everything above about meetups exists because of one fact: there are not
 enough of the old kind of Internet address (IPv4) to go round, so a home
 router shares one among all the machines behind it, and nothing outside can
 address any of them. The new kind (IPv6) has no such shortage. On a network
 that has IPv6, **every machine gets a public address of its own**. Your
 desktop at home may already be directly addressable from anywhere, with no
-relay and no cloud machine in the picture.
+meetup and no cloud machine in the picture.
 
 **Do you have it?** On each machine:
 
@@ -381,7 +381,7 @@ Things to know:
 
 - **This puts your machine's ssh on the Internet.** Use keys only: on the
   home machine set `PasswordAuthentication no` in `/etc/ssh/sshd_config`,
-  and keep it updated. If that sentence makes you uneasy, use the relay
+  and keep it updated. If that sentence makes you uneasy, use the meetup
   instead; it needs no door opened at home.
 - **The address can change.** Home connections are sometimes given a new
   IPv6 prefix, and machines also make temporary addresses that are replaced
@@ -389,13 +389,13 @@ Things to know:
   is *not* marked temporary, and give it a name with a dynamic DNS service
   if your connection renumbers.
 - **When your laptop is somewhere without IPv6**, the home machine's IPv6
-  address is unreachable from there. The relay still works from anywhere,
-  so the two are worth having together: IPv6 when you can, the relay when
+  address is unreachable from there. The meetup still works from anywhere,
+  so the two are worth having together: IPv6 when you can, the meetup when
   you cannot.
 - **What this build does not yet do with IPv6.** The automatic path-finding
-  through routers ("hole punching") and `mosh-server stun` speak IPv4 only.
+  through routers ("hole punching") and `mosh-server meetup` speak IPv4 only.
   So mosh will not open an IPv6 firewall for you the way it gets through an
-  IPv4 router: the rule above has to be there. And a relay needs an IPv4
+  IPv4 router: the rule above has to be there. And a meetup needs an IPv4
   address, which is the part a cloud provider may charge for. The fallback
   through ssh does work over IPv6.
 
@@ -425,16 +425,16 @@ asked, and keeps trying the better ones:
    an answer, and lets the other in. To aim, each end first asks a server
    outside "what address do I appear to have?" (that question is called
    STUN).
-3. **By UDP, passed along by your relay.** Some routers cannot be fooled
-   that way. Then both ends send to your relay, which hands each one's
+3. **By UDP, through your meetup.** Some routers cannot be fooled
+   that way. Then both ends send to your meetup, which hands each one's
    traffic to the other. It cannot read it: mosh seals everything between
    its two ends.
-4. **Inside an ssh connection.** When UDP is blocked completely. It works,
+4. **Inside an ssh connection** (mosh calls this the relay). When UDP is blocked completely. It works,
    but it is the phone call again, so mosh leaves it as soon as it can.
 
 **Who can read what.** Everything mosh sends is encrypted and authenticated
 between your laptop and the server with a key that was exchanged over ssh.
-A relay, a STUN server and the networks in between see that two addresses
+A meetup, a STUN server and the networks in between see that two addresses
 are talking, and nothing of what they say.
 
 ## Batteries included: the editor

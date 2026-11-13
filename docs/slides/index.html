@@ -150,7 +150,7 @@ table { font-size: 28px; color: #10202B; width: 100%; }
 <h1>A connection that<br><span class="accent">does not drop.</span></h1>
 <p class="lede" style="width:1200px">Close the laptop. Change buildings. Lose the Wi-Fi. Your work on the server is still there when you come back.</p>
 <div class="spacer"></div>
-<p class="small">Why you want it · how to set it up · how it works · a relay of your own</p>
+<p class="small">Why you want it · how to set it up · how it works · a meetup of your own</p>
 <aside>Open with the experience everyone in the room has had: an ssh session that died and took a long-running job with it. This deck is about never having that happen again, and it takes about ten minutes to set up. Note up front that this is an unofficial, experimental build of mosh.</aside>
 </section>
 <section id="problem">
@@ -247,11 +247,11 @@ table { font-size: 28px; color: #10202B; width: 100%; }
 <div class="ladder">
 <div class="rung arrive" style="--i:0"><p class="n">1</p><p class="name">Straight there</p><p class="why">The normal case: the server has a public address.</p></div>
 <div class="rung arrive" style="--i:1"><p class="n">2</p><p class="name">Straight through the routers</p><p class="why">Both ends behind home routers: they open a path between them.</p></div>
-<div class="rung arrive" style="--i:2"><p class="n">3</p><p class="name">Passed along by your relay</p><p class="why">Routers that cannot be opened: a machine both can reach hands it on. Still fast.</p></div>
+<div class="rung arrive" style="--i:2"><p class="n">3</p><p class="name">Through your meetup</p><p class="why">Routers that cannot be opened: a machine both can reach hands it on. Still fast.</p></div>
 <div class="rung last arrive" style="--i:3"><p class="n">4</p><p class="name">Inside an ssh connection</p><p class="why">Networks that block everything else. It works, but it is the phone call again.</p></div>
 </div>
 <p class="small">You choose nothing. mosh tries them without being asked, uses the best that works, and keeps trying the better ones.</p>
-<aside>Standard mosh has only the first. If its UDP is blocked it sits at Connecting forever. This build falls back to ssh after three seconds, and from there looks for something better: a direct path through the NAT routers, or UDP by way of a relay. When you change networks it starts again from the top by itself.</aside>
+<aside>Standard mosh has only the first. If its UDP is blocked it sits at Connecting forever. This build falls back to ssh after three seconds, and from there looks for something better: a direct path through the NAT routers, or UDP through a meetup. When you change networks it starts again from the top by itself.</aside>
 </section>
 <section id="punch" style="gap:32px">
 <p class="eyebrow">HOW TWO HIDDEN MACHINES MEET</p>
@@ -271,15 +271,15 @@ table { font-size: 28px; color: #10202B; width: 100%; }
 <div class="card arrive" style="--i:2"><p class="tag">3 · SEND, BOTH AT ONCE</p><h3>Each router sees an answer</h3><p class="body">It sent something out, something came back. The path is open.</p></div>
 </div>
 <p class="small">Two laptops in the same room skip the routers altogether and find each other on the local network.</p>
-<aside>This is called hole punching. It is the same technique video calls and Tailscale use. It fails on routers that give out a different outside address for every destination, which many phone networks and some campuses do. Then mosh uses the relay instead.</aside>
+<aside>This is called hole punching. It is the same technique video calls and Tailscale use. It fails on routers that give out a different outside address for every destination, which many phone networks and some campuses do. Then mosh goes through the meetup instead.</aside>
 </section>
-<section id="relay-why" style="gap:32px">
-<p class="eyebrow">A RELAY OF YOUR OWN · OPTIONAL</p>
+<section id="meetup-why" style="gap:32px">
+<p class="eyebrow">A MEETUP OF YOUR OWN · OPTIONAL</p>
 <h2>One tiny cloud machine both ends can reach</h2>
 <div class="net">
 <div class="node"><p class="who">laptop</p><p class="where">anywhere</p></div>
 <div class="wire"></div>
-<div class="node cloud"><p class="who">your relay</p><p class="where">public address</p></div>
+<div class="node cloud"><p class="who">your meetup</p><p class="where">public address</p></div>
 <div class="wire"></div>
 <div class="node"><p class="who">desktop</p><p class="where">behind a router</p></div>
 </div>
@@ -289,17 +289,17 @@ table { font-size: 28px; color: #10202B; width: 100%; }
 <div class="card"><p class="tag">IT IS PRIVATE</p><h3>A key only you have</h3><p class="body">Without the key it does not answer at all.</p></div>
 </div>
 <p class="small">You need this only to reach a machine with no public address. For a course server, skip it.</p>
-<aside>A course server normally has a public address, and plain mosh reaches it. The relay is for the other case: your own machine at home or in a lab, behind a router that nothing outside can start a conversation with. The smallest instance any cloud offers is enough, because most of the time it only makes introductions.</aside>
+<aside>A course server normally has a public address, and plain mosh reaches it. The meetup is for the other case: your own machine at home or in a lab, behind a router that nothing outside can start a conversation with. The smallest instance any cloud offers is enough, because most of the time it only makes introductions.</aside>
 </section>
 <section id="aws-launch" style="gap:32px">
-<p class="eyebrow">YOUR RELAY ON AWS · STEP 1 OF 3</p>
+<p class="eyebrow">YOUR MEETUP ON AWS · STEP 1 OF 3</p>
 <h2>Launch a free-tier instance</h2>
 <div class="split">
 <div class="col">
 <p class="body">In the AWS console: <b>EC2</b>, then <b>Launch instance</b>.</p>
 <table>
 <tr><th style="width:38%">Setting</th><th style="width:62%">Choose</th></tr>
-<tr><td>Name</td><td>mosh-relay</td></tr>
+<tr><td>Name</td><td>mosh-meetup</td></tr>
 <tr><td>Image</td><td>Ubuntu Server 24.04 LTS</td></tr>
 <tr><td>Instance type</td><td>the one marked “Free tier eligible”</td></tr>
 <tr><td>Key pair</td><td>create one; keep the .pem file</td></tr>
@@ -310,40 +310,40 @@ table { font-size: 28px; color: #10202B; width: 100%; }
 <table>
 <tr><th style="width:34%">Type</th><th style="width:22%">Port</th><th style="width:44%">For</th></tr>
 <tr><td>SSH (TCP)</td><td>22</td><td>logging in</td></tr>
-<tr><td>Custom UDP</td><td>60000</td><td>the relay</td></tr>
+<tr><td>Custom UDP</td><td>60000</td><td>the meetup</td></tr>
 </table>
-<p class="body">Launch, and note the <b>Public IPv4 address</b>. On the next slides it is written <span class="inline">RELAY</span>.</p>
+<p class="body">Launch, and note the <b>Public IPv4 address</b>. On the next slides it is written <span class="inline">MEETUP</span>.</p>
 </div>
 </div>
 <p class="foot">Check what the free tier covers for your account first: it has changed over the years. Terminate the instance when you are done with it.</p>
-<aside>These are the standard console steps; they have not been run on AWS by the author, and the console's wording shifts over time. Any cloud's smallest instance works the same way: a public address, ssh in, and one UDP port open. Source "Anywhere" is fine for both rules, because the relay ignores anyone without the key.</aside>
+<aside>These are the standard console steps; they have not been run on AWS by the author, and the console's wording shifts over time. Any cloud's smallest instance works the same way: a public address, ssh in, and one UDP port open. Source "Anywhere" is fine for both rules, because the meetup ignores anyone without the key.</aside>
 </section>
 <section id="aws-start" style="gap:28px">
-<p class="eyebrow">YOUR RELAY ON AWS · STEP 2 OF 3</p>
+<p class="eyebrow">YOUR MEETUP ON AWS · STEP 2 OF 3</p>
 <h2>Install it, make a key, start it</h2>
-<p class="code tight"><span class="dim"># from your laptop</span><br>ssh -i mosh-relay.pem ubuntu@RELAY<br><br><span class="dim"># on the relay: install, and make the key that makes it yours</span><br>curl -fsSL https://raw.githubusercontent.com/wmacevoy/mosh/master/scripts/install.sh | sh<br>mkdir -p ~/.config/mosh<br>echo "MOSH_STUN_KEY=$(~/.local/bin/mosh-server <span class="hot">stun-key</span>)" > ~/.config/mosh/stun.env<br>chmod 600 ~/.config/mosh/stun.env<br><br><span class="dim"># what the service runs, now and after every reboot</span><br>~/.local/bin/mosh-server <span class="hot">stun 60000</span></p>
-<p class="small">The handout has the short service file that starts it at boot (<span class="inline" style="font-size:26px">systemctl enable --now mosh-relay</span>). Copy the key out of <span class="inline" style="font-size:26px">stun.env</span>: your laptop needs it next.</p>
-<aside>mosh-server stun-key prints a new random key. mosh-server stun 60000 is the relay itself: with MOSH_STUN_KEY set it answers only requests that carry proof of the key, and passes traffic along only for them. The README gives a systemd unit that reads the key from stun.env and restarts the relay if it stops.</aside>
+<p class="code tight"><span class="dim"># from your laptop</span><br>ssh -i mosh-meetup.pem ubuntu@MEETUP<br><br><span class="dim"># on the meetup: install, and make the key that makes it yours</span><br>curl -fsSL https://raw.githubusercontent.com/wmacevoy/mosh/master/scripts/install.sh | sh<br>mkdir -p ~/.config/mosh<br>echo "MOSH_MEETUP_KEY=$(~/.local/bin/mosh-server <span class="hot">meetup-key</span>)" > ~/.config/mosh/meetup.env<br>chmod 600 ~/.config/mosh/meetup.env<br><br><span class="dim"># what the service runs, now and after every reboot</span><br>~/.local/bin/mosh-server <span class="hot">meetup 60000</span></p>
+<p class="small">The handout has the short service file that starts it at boot (<span class="inline" style="font-size:26px">systemctl enable --now mosh-meetup</span>). Copy the key out of <span class="inline" style="font-size:26px">meetup.env</span>: your laptop needs it next.</p>
+<aside>mosh-server meetup-key prints a new random key. mosh-server meetup 60000 is the meetup itself: with MOSH_MEETUP_KEY set it answers only requests that carry proof of the key, and passes traffic along only for them. The README gives a systemd unit that reads the key from meetup.env and restarts the meetup if it stops.</aside>
 </section>
 <section id="aws-use" style="gap:28px">
-<p class="eyebrow">YOUR RELAY ON AWS · STEP 3 OF 3</p>
+<p class="eyebrow">YOUR MEETUP ON AWS · STEP 3 OF 3</p>
 <h2>Point your laptop at it, and reach home</h2>
 <div class="split">
 <div class="col">
 <h3>On your laptop, once</h3>
-<p class="code tight"><span class="dim"># in ~/.bashrc or ~/.zshrc</span><br>export MOSH_STUN=RELAY:60000<br>export MOSH_STUN_KEY=your-key</p>
+<p class="code tight"><span class="dim"># in ~/.bashrc or ~/.zshrc</span><br>export MOSH_MEETUP=MEETUP:60000<br>export MOSH_MEETUP_KEY=your-key</p>
 <h3>On the machine at home, kept running</h3>
-<p class="code tight">ssh -N <span class="hot">-R 2222:localhost:22</span> \<br>&#160;&#160;&#160;&#160;ubuntu@RELAY</p>
-<p class="small">It holds a door open: port 2222 on the relay now leads to the home machine’s ssh.</p>
+<p class="code tight">ssh -N <span class="hot">-R 2222:localhost:22</span> \<br>&#160;&#160;&#160;&#160;ubuntu@MEETUP</p>
+<p class="small">It holds a door open: port 2222 on the meetup now leads to the home machine’s ssh.</p>
 </div>
 <div class="col">
 <h3>In ~/.ssh/config on your laptop</h3>
-<p class="code tight">Host relay<br>&#160;&#160;HostName RELAY<br>&#160;&#160;User ubuntu<br><br>Host home<br>&#160;&#160;HostName localhost<br>&#160;&#160;Port 2222<br>&#160;&#160;<span class="hot">ProxyJump relay</span></p>
+<p class="code tight">Host meetup<br>&#160;&#160;HostName MEETUP<br>&#160;&#160;User ubuntu<br><br>Host home<br>&#160;&#160;HostName localhost<br>&#160;&#160;Port 2222<br>&#160;&#160;<span class="hot">ProxyJump meetup</span></p>
 <h3>Then</h3>
 <p class="code tight">mosh --experimental-remote-ip=remote home</p>
 </div>
 </div>
-<aside>The first few seconds travel through the relay inside ssh. Then the two ends find each other and the session moves to a direct connection, or to UDP passed along by the relay if a direct one is impossible. mocp and -L work the same way with the same option. This arrangement is tested in a lab with real NAT routers, with a stand-in for the ssh hop; try it yourself before relying on it. The handout adds the IdentityFile and User lines.</aside>
+<aside>The first few seconds travel through the meetup inside ssh. Then the two ends find each other and the session moves to a direct connection, or to UDP passed along by the meetup if a direct one is impossible. mocp and -L work the same way with the same option. This arrangement is tested in a lab with real NAT routers, with a stand-in for the ssh hop; try it yourself before relying on it. The handout adds the IdentityFile and User lines.</aside>
 </section>
 <section id="tested">
 <p class="eyebrow">BEFORE YOU RELY ON IT</p>
@@ -353,7 +353,7 @@ table { font-size: 28px; color: #10202B; width: 100%; }
 <p class="tag">TESTED ON EVERY CHANGE</p>
 <h3>Linux, macOS, Windows builds</h3>
 <p class="body">Terminal sessions, forwarding, copies that resume, the ssh fallback.</p>
-<p class="body">A lab with two real NAT routers: a direct path found, a router that cannot be opened, an address that changes mid-session, two machines on one network, traffic passed along by a keyed relay.</p>
+<p class="body">A lab with two real NAT routers: a direct path found, a router that cannot be opened, an address that changes mid-session, two machines on one network, traffic passed along by a meetup with a key.</p>
 <p class="body">Fuzzers and memory checkers on everything that reads from the network.</p>
 </div>
 <div class="col card">
@@ -365,7 +365,7 @@ table { font-size: 28px; color: #10202B; width: 100%; }
 <p class="body">Any outside review: this is an unofficial, experimental build of mosh.</p>
 </div>
 </div>
-<aside>Be straightforward about this with students. The parts they use every day, the terminal, forwarding and copying, are the best tested. The relay and hole punching are new, are tested against real address translation in a lab, and have not yet met the variety of routers out in the world. When something cannot be done the session falls back to ssh; it does not fail.</aside>
+<aside>Be straightforward about this with students. The parts they use every day, the terminal, forwarding and copying, are the best tested. The meetup and hole punching are new, are tested against real address translation in a lab, and have not yet met the variety of routers out in the world. When something cannot be done the session falls back to ssh; it does not fail.</aside>
 </section>
 <section id="editor" class="dark">
 <p class="eyebrow">BATTERIES INCLUDED</p>

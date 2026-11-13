@@ -10,13 +10,13 @@ or without being root, where the system allows it: unshare -Urnm ...
 CI runs it each way (the "nat" job).
 
    client 192.168.1.2 -- natA 203.0.113.11 --+
-                                             +-- "the Internet" 203.0.113.1 (a STUN server)
+                                             +-- "the Internet" 203.0.113.1 (a meetup)
    server 192.168.2.2 -- natB 203.0.113.12 --+
 
 usage: nat-lab.py BINDIR NFT [easy|hard|passed|moved|room]
   easy   both NATs keep the port number (as most home routers do)
   hard   the server's NAT picks a new port for every destination: no way through; the stream has to do
-  passed hard, but with a key for the Internet's server, which then passes the session on by UDP
+  passed hard, but with the meetup's key, so that it passes the session on by UDP
   moved  easy, and then the client's NAT changes its outside address
   room   the server is behind the client's own NAT (192.168.3.2): two machines in one room
 
@@ -84,11 +84,11 @@ print("the lab: each side reaches the Internet and not the other".ljust(66), "ok
 if not ok:
     sys.exit(1)
 
-# the Internet's STUN server: "mosh-server stun", which with a key answers only those who have it,
-# and for them will also pass datagrams on
-stun_key = subprocess.run([bindir + "/mosh-server", "stun-key"], capture_output=True, text=True).stdout.strip()
+# the Internet's meetup: "mosh-server meetup", which says where an asker appears to be; with a key it
+# answers only those who have it, and for them will also pass datagrams on
+meetup_key = subprocess.run([bindir + "/mosh-server", "meetup-key"], capture_output=True, text=True).stdout.strip()
 keyed = kind in ("passed", "room")
-stun = subprocess.Popen([bindir + "/mosh-server", "stun", "3478"], env=dict(os.environ, **({"MOSH_STUN_KEY": stun_key} if keyed else {})))
+meetup = subprocess.Popen([bindir + "/mosh-server", "meetup", "3478"], env=dict(os.environ, **({"MOSH_MEETUP_KEY": meetup_key} if keyed else {})))
 time.sleep(0.3)
 
 work = tempfile.mkdtemp(prefix="natlab-")
@@ -103,8 +103,8 @@ port, key = re.search(r"MOSH CONNECT (\d+) (\S+)", out).groups()
 
 # The client is told an address it cannot reach (as when ssh came by a jump host), so it turns to the relay:
 # which here is started in the server's namespace directly, where ssh would start it.
-cenv = dict(env, MOSH_KEY=key, MOSH_RELAY="auto", MOSH_STUN="203.0.113.1:3478", MOSH_RELAY_STREAM_IDLE_MS="4000",
-            **({"MOSH_STUN_KEY": stun_key} if keyed else {}),
+cenv = dict(env, MOSH_KEY=key, MOSH_RELAY="auto", MOSH_MEETUP="203.0.113.1:3478", MOSH_RELAY_STREAM_IDLE_MS="4000",
+            **({"MOSH_MEETUP_KEY": meetup_key} if keyed else {}),
             MOSH_RELAY_COMMAND="\x1f".join(["ip", "netns", "exec", where, bindir + "/mosh-server", "relay", server_ip, port]))
 client = subprocess.Popen(["ip", "netns", "exec", "client", bindir + "/mosh-client", "-N", "-L", "8888:127.0.0.1:7777", "198.51.100.9", port],
                           env=cenv, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
@@ -129,16 +129,16 @@ try:
     check("the session comes up (through the stream, there being no other way)", wait(lambda: any("connected" in l for l in said), 20) and works())
     there = "203.0.113.11" if kind == "room" else "203.0.113.12"
     told = wait(lambda: "local: we may be reached at 203.0.113.11:" in logged() and ("remote: we may be reached at %s:" % there) in logged(), 10)
-    check("each end learns its outside address from the STUN server", told, logged())
+    check("each end learns its outside address from the meetup", told, logged())
 
     if kind == "passed":
-        check("a way is found by UDP, by way of the server with the key", wait(lambda: logged().count("a way through is open, to by way of 203.0.113.1:3478") >= 2, 15), logged())
+        check("a way is found by UDP, through the meetup, having its key", wait(lambda: logged().count("a way through is open, to the meetup at 203.0.113.1:3478") >= 2, 15), logged())
         wait(lambda: (works(), "staying for the way through" in logged())[1], 25)
         check("the stream is let go; the far relay stays", "staying for the way through" in logged(), logged())
         starts = logged().count("starting the stream")
         good = all(works() for i in range(5)) and works(300000)
         time.sleep(5)
-        check("the session works by UDP alone, passed on by the server", good and works() and logged().count("starting the stream") == starts, logged())
+        check("the session works by UDP alone, passed on by the meetup", good and works() and logged().count("starting the stream") == starts, logged())
         # and nobody without the key is answered at all
         asker = socket.socket(socket.AF_INET, socket.SOCK_DGRAM); asker.settimeout(1.5)
         asker.sendto(b"\x00\x01\x00\x00\x21\x12\xa4\x42" + os.urandom(12), ("203.0.113.1", 3478))
@@ -146,7 +146,7 @@ try:
             asker.recvfrom(100); silent = False
         except socket.timeout:
             silent = True
-        check("the server says nothing to someone without the key", silent)
+        check("the meetup says nothing to someone without the key", silent)
     elif kind == "hard":
         time.sleep(12)
         check("no way through is found (the server's NAT gives it away to nobody)", "a way through is open" not in logged(), logged())
@@ -181,7 +181,7 @@ try:
     check("the far relay is told when the client goes", kind == "hard" or wait(lambda: "the other end has finished" in logged(), 8), logged())
 finally:
     target.kill()
-    stun.kill()
+    meetup.kill()
     if client.poll() is None:
         client.kill()
     stop_ours()

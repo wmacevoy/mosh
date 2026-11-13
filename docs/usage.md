@@ -362,49 +362,56 @@ You need do nothing. What to know:
   default two public STUN servers, `stun.l.google.com:19302` and
   `stun.cloudflare.com:3478`. Each gets one small datagram from each end, and
   so learns those ends' addresses and nothing else. Only when a session has
-  had to fall back to ssh; never otherwise. `--stun=HOST:PORT` names another
-  (your own, say), and `--stun=none` asks nobody, which still works where the
-  NATs keep port numbers as they are and each end knows the other's address.
+  had to fall back to ssh; never otherwise. `--stun=HOST:PORT` names others,
+  and `--stun=none` asks none, which still works where the NATs keep port
+  numbers as they are and each end knows the other's address. If you have a
+  meetup of your own (below), it is asked instead of the public servers.
 - `--punch=never` turns it off. `--relay=always` and `--relay=never` have no
   use for it either.
 - IPv4 only, which is where the NATs are. A machine with a public IPv6
   address needs no path found to it, only its firewall opened for UDP
   60000-61000 and `mosh -6`; see [If you have IPv6](students.md#if-you-have-ipv6).
 
-#### A server of your own
+#### A meetup of your own
 
-Any machine with a public address and one UDP port open can be the STUN
-server, and, for you alone, something better than that:
+A **meetup** is a machine with a public address where the two ends of a
+session, each behind its own NAT, can find each other. Any machine with a
+public address and one UDP port open will do:
 
 ```
-mosh-server stun-key                                 # prints a key; keep it
-MOSH_STUN_KEY=that-key mosh-server stun 60000        # on the machine with the public address
+mosh-server meetup-key                                   # prints a key; keep it
+MOSH_MEETUP_KEY=that-key mosh-server meetup 60000        # on the machine with the public address
 ```
 
 and on the machine you use mosh from (in your shell's profile, say):
 
 ```
-export MOSH_STUN=the.public.machine:60000
-export MOSH_STUN_KEY=that-key
+export MOSH_MEETUP=the.public.machine:60000
+export MOSH_MEETUP_KEY=that-key
 ```
 
-Without a key, `mosh-server stun PORT` is an ordinary STUN server that tells
-anyone who asks where they appear to be. With one:
+(`--meetup=HOST:PORT` says the same as `MOSH_MEETUP` for one session. The key
+is only ever given in the environment, so that it is not shown to everyone
+who lists processes.)
+
+Without a key, `mosh-server meetup PORT` only tells anyone who asks where
+they appear to be, as a public STUN server does. With one:
 
 - it answers **only** requests that show the key, and is silent to everyone
   else, so it is yours and nobody else's;
 - it will also **pass the session's datagrams on** between your two ends when
   no direct path can be found between them. That is still UDP, with mosh
-  behaving as mosh does, where the alternative was the stream through ssh.
-  Whenever a direct path can be found, that is used instead and the server
-  carries nothing.
+  behaving as mosh does, where the alternative was the stream through ssh,
+  and for as long as they need it. Whenever a direct path can be found, that
+  is used instead and the meetup carries nothing.
 
-What it passes on is sealed by mosh between its two ends; the server cannot
+What it passes on is sealed by mosh between its two ends; the meetup cannot
 read it. It keeps running until it is killed (start it from `cron` with
 `@reboot`, or a service manager), and uses next to nothing while idle.
 
 A machine with a public address that you can ssh through (the smallest cloud
-instance will do) is enough to reach a machine behind a NAT this way: the
+instance will do, and it can be your meetup as well) is enough to reach a
+machine behind a NAT this way: the
 hidden machine keeps an ssh connection out to it with a reverse tunnel, you
 ssh through it with `ProxyJump`, and `mosh --experimental-remote-ip=remote`
 does the rest. After the first few seconds the traffic goes directly and the
@@ -431,7 +438,7 @@ in the same order:
 | `--fragment-parity=mode` | `-F mode` |
 | `-N` | `-N` (client only; the server is given a command that waits) |
 | `--relay=when` | `MOSH_RELAY=when` and `MOSH_RELAY_COMMAND` in `mosh-client`'s environment (below) |
-| `--punch=when`, `--stun=list` | `MOSH_PUNCH=when` and `MOSH_STUN=list` in `mosh-client`'s environment; `MOSH_STUN_KEY` is the key for a STUN server of your own (never an option, so that it is not shown to everyone who lists processes). `MOSH_RELAY_LOG=file` has both relays write down what they do, where they can (the remote one only if it is set on the server too) |
+| `--punch=when`, `--stun=list`, `--meetup=host:port` | `MOSH_PUNCH=when`, `MOSH_STUN=list` and `MOSH_MEETUP=host:port` in `mosh-client`'s environment; `MOSH_MEETUP_KEY` is the meetup's key (never an option, so that it is not shown to everyone who lists processes). `MOSH_RELAY_LOG=file` has both relays write down what they do, where they can (the remote one only if it is set on the server too) |
 | `--stdio`, `--copy` | `-X words` at each end, saying what the process at that end of the stream is (see `mosh-server(1)`) |
 
 `MOSH_RELAY_COMMAND` is the command that reaches a relay on the server, as
