@@ -2,7 +2,7 @@
 title: Port forwarding for mosh
 ---
 
-[Overview](index.md) · [Using it](usage.md) · [How it works](design.md) · [Status and limits](status.md)
+[Overview](index.md) · [Start here](students.md) · [Using it](usage.md) · [How it works](design.md) · [Status and limits](status.md)
 
 # Port forwarding for mosh
 
@@ -69,6 +69,9 @@ It also makes UDP forwarding possible at all, which ssh does not offer.
 
 ## Where to go next
 
+- **[Start here](students.md)**: what this is, why you want it, and how to
+  set it up, for someone who has not used mosh. Includes a relay of your own
+  on a free cloud machine.
 - [Using it](usage.md): options, examples, building, troubleshooting.
 - [How it works](design.md): the side channel, the wire format, and the
   design choices.
